@@ -153,7 +153,7 @@ describe('Daymark task UI', () => {
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Settings' }))
 
     const settingsDialog = screen.getByRole('dialog', { name: 'Settings' })
-    fireEvent.click(within(settingsDialog).getByRole('button', { name: 'Manage profile' }))
+    fireEvent.click(within(settingsDialog).getByRole('button', { name: 'Connect Google account' }))
 
     expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Profile' })).toBeInTheDocument()

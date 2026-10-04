@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
-import { X } from '@phosphor-icons/react'
+import { useEffect, useRef, useState } from 'react'
+import { SignOut, X } from '@phosphor-icons/react'
+import type { AccountSyncState } from './AccountDialog'
 
 export type ThemePreference = 'system' | 'light' | 'dark'
 
@@ -7,6 +8,10 @@ interface SettingsDialogProps {
   themePreference: ThemePreference
   onThemePreferenceChange: (preference: ThemePreference) => void
   onManageAccount: () => void
+  isSignedIn: boolean
+  accountEmail: string | null
+  syncState: AccountSyncState
+  onSignOut: () => Promise<void>
   onClose: () => void
 }
 
@@ -16,8 +21,32 @@ const themeOptions: { value: ThemePreference; label: string; description: string
   { value: 'dark', label: 'Dark', description: 'Always use dark theme' },
 ]
 
-export function SettingsDialog({ themePreference, onThemePreferenceChange, onManageAccount, onClose }: SettingsDialogProps) {
+export function SettingsDialog({
+  themePreference,
+  onThemePreferenceChange,
+  onManageAccount,
+  isSignedIn,
+  accountEmail,
+  syncState,
+  onSignOut,
+  onClose,
+}: SettingsDialogProps) {
   const dialogRef = useRef<HTMLElement>(null)
+  const [signOutBusy, setSignOutBusy] = useState(false)
+  const [signOutError, setSignOutError] = useState<string | null>(null)
+  const canSignOut = syncState === 'synced'
+
+  async function handleSignOut() {
+    setSignOutBusy(true)
+    setSignOutError(null)
+    try {
+      await onSignOut()
+    } catch (error) {
+      setSignOutError(error instanceof Error ? error.message : 'Sign-out failed. Please try again.')
+    } finally {
+      setSignOutBusy(false)
+    }
+  }
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -92,7 +121,25 @@ export function SettingsDialog({ themePreference, onThemePreferenceChange, onMan
           <section className="settings-info" aria-labelledby="settings-data-heading">
             <h3 id="settings-data-heading">Your data</h3>
             <p>Your tasks stay available on this device and sync to your account when you are connected.</p>
-            <button className="settings-account-button" type="button" onClick={onManageAccount}>Manage profile</button>
+            {isSignedIn ? (
+              <>
+                <p className="settings-account-email">{accountEmail ?? 'Google account connected'}</p>
+                <button
+                  className="account-signout settings-signout-button"
+                  type="button"
+                  disabled={!canSignOut || signOutBusy}
+                  title={!canSignOut ? 'Sync pending changes before signing out' : undefined}
+                  onClick={() => { void handleSignOut() }}
+                >
+                  <SignOut size={18} aria-hidden="true" />
+                  <span>{signOutBusy ? 'Signing out…' : canSignOut ? 'Sign out of Google' : 'Sync tasks to sign out'}</span>
+                </button>
+                <p className="account-signout-note">This signs you out of Daymark. It does not sign you out of Gmail in other tabs or Google apps.</p>
+                {signOutError && <p className="account-error" role="alert">{signOutError}</p>}
+              </>
+            ) : (
+              <button className="settings-account-button" type="button" onClick={onManageAccount}>Connect Google account</button>
+            )}
           </section>
         </div>
       </section>

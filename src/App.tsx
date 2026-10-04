@@ -1036,6 +1036,13 @@ function App() {
             themePreference={themePreference}
             onThemePreferenceChange={setThemePreference}
             onManageAccount={() => openAccount(settingsTriggerRef.current ?? undefined)}
+            isSignedIn={Boolean(accountUser)}
+            accountEmail={accountUser?.email ?? null}
+            syncState={syncState}
+            onSignOut={async () => {
+              await signOut()
+              setSettingsOpen(false)
+            }}
             onClose={() => setSettingsOpen(false)}
           />
         )}
