@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 44" fill="none">
+  <g transform="translate(4, 6)">
+    <circle cx="8" cy="8" r="4" fill="#0F766E"/>
+    <rect x="18" y="5" width="16" height="6" rx="3" fill="#0F766E"/>
+    <circle cx="8" cy="20" r="4" fill="#EAB308"/>
+    <rect x="18" y="17" width="22" height="6" rx="3" fill="#1E293B"/>
+    <circle cx="8" cy="32" r="4" fill="#0F766E"/>
+    <rect x="18" y="29" width="12" height="6" rx="3" fill="#0F766E"/>
+  </g>
+  <text x="54" y="29" font-family="'Plus Jakarta Sans Variable', system-ui, sans-serif" font-size="24" font-weight="800" fill="#0F172A" letter-spacing="-0.03em">daymark</text>
+</svg>
