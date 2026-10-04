@@ -285,6 +285,23 @@ button {
   box-shadow: inset 0 5px 0 rgba(135, 102, 78, 0.45);
 }
 
+.category-screen-actions .greeting-portrait {
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.greeting-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.greeting-portrait:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .category-cards {
   position: absolute;
   z-index: 1;
@@ -1488,38 +1505,6 @@ button {
     padding-inline: 14px;
   }
 
-  .mobile-categories {
-    margin: 0 0 0.65rem;
-    display: flex;
-    gap: 0.28rem;
-    overflow-x: auto;
-    padding: 0.1rem 0 0.3rem;
-    scrollbar-width: none;
-  }
-
-  .mobile-categories::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mobile-categories button {
-    min-height: 34px;
-    padding: 0 0.48rem;
-    flex: 0 0 auto;
-    border: 1px solid #e7e2d2;
-    border-radius: 5px;
-    background: #fffefa;
-    color: #77756b;
-    font-size: 0.62rem;
-    cursor: pointer;
-  }
-
-  .mobile-categories button.is-current {
-    border-color: var(--teal-dark);
-    background: #e9f8f5;
-    color: #087f73;
-    font-weight: 800;
-  }
-
   .task-controls {
     flex-direction: row;
     align-items: center;
@@ -1734,8 +1719,7 @@ button {
   color: var(--ink);
 }
 
-:root[data-theme='dark'] .filter-button.is-active,
-:root[data-theme='dark'] .mobile-categories button {
+:root[data-theme='dark'] .filter-button.is-active {
   background: #48493f;
   color: var(--ink);
 }
@@ -2053,7 +2037,7 @@ body {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto 1fr;
   align-items: start;
   column-gap: 24px;
   row-gap: 16px;
@@ -2134,9 +2118,8 @@ body {
   text-transform: none;
 }
 
-.screen-greeting span {
-  font-size: 20px;
-  line-height: 1;
+.screen-greeting svg {
+  flex: 0 0 auto;
 }
 
 .greeting-row h2 {
@@ -2187,13 +2170,12 @@ body {
 .quick-intake-submit {
   width: 40px;
   height: 40px;
+  flex: 0 0 40px;
   display: grid;
   place-items: center;
   border-radius: 50%;
   background: var(--teal);
   color: white;
-  font-size: 27px;
-  line-height: 1;
 }
 
 .dashboard-category-heading {
@@ -2246,7 +2228,7 @@ body {
 .category-cards {
   position: static;
   grid-column: 1;
-  grid-row: 3 / span 2;
+  grid-row: 3;
   inset: auto;
   gap: 10px;
   overflow: visible;
@@ -2406,65 +2388,6 @@ body {
   line-height: 1.5;
 }
 
-.focus-ritual {
-  grid-column: 2;
-  grid-row: 3;
-  min-height: 78px;
-  padding: 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  border-radius: 16px;
-  background: var(--paper);
-  box-shadow: 0 2px 8px -2px rgba(30, 41, 59, 0.06);
-}
-
-.focus-ritual-icon {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #ffe083;
-  color: #574500;
-}
-
-.focus-ritual-copy {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.focus-ritual-copy strong {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.focus-ritual-copy small {
-  color: var(--ink-soft);
-  font-size: 10px;
-  line-height: 1.4;
-}
-
-.focus-ritual > button {
-  min-height: 34px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 999px;
-  background: #e7eeff;
-  color: var(--ink);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
 .dashboard-fab {
   position: fixed;
   z-index: 9;
@@ -2537,10 +2460,6 @@ body {
   flex: none;
   overflow: visible;
   scrollbar-width: auto;
-}
-
-.mobile-categories {
-  display: none;
 }
 
 .task-controls {
@@ -2873,6 +2792,270 @@ body {
   content: '';
 }
 
+.settings-sheet {
+  width: min(100%, 520px);
+}
+
+.settings-sheet .composer-title-row {
+  margin-bottom: 20px;
+}
+
+.settings-content {
+  display: grid;
+  gap: 24px;
+}
+
+.settings-theme-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-theme-field legend,
+.settings-info h3 {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.settings-theme-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.settings-theme-option {
+  min-width: 0;
+  min-height: 68px;
+  padding: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.settings-theme-option.is-selected {
+  border-color: var(--teal-dark);
+  background: color-mix(in srgb, var(--teal) 9%, var(--paper));
+}
+
+.settings-theme-option input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+  accent-color: var(--teal-dark);
+}
+
+.settings-theme-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.settings-theme-copy strong {
+  font-size: 12px;
+}
+
+.settings-theme-copy small {
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.settings-info {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-info h3 {
+  margin-bottom: 4px;
+}
+
+.settings-info p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.settings-account-button {
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--evergreen);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.settings-account-button:hover {
+  text-decoration: underline;
+}
+
+.settings-account-button:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.account-content {
+  display: grid;
+  gap: 16px;
+}
+
+.account-message,
+.account-sync-state {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--paper) 84%, var(--teal) 16%);
+}
+
+.account-message h3 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.account-message p,
+.account-sync-state p,
+.account-signout-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.account-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.account-avatar {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.account-avatar-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--teal);
+  color: var(--evergreen);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.account-identity > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.account-identity strong,
+.account-identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-identity strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.account-identity > div > span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.account-sync-state {
+  display: grid;
+  gap: 5px;
+}
+
+.account-sync-state strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.account-text-button {
+  width: fit-content;
+  padding: 4px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--evergreen);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-google-button,
+.account-signout {
+  min-height: 46px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-signout {
+  border-color: var(--evergreen);
+  background: var(--evergreen);
+  color: var(--paper);
+}
+
+.account-google-button:disabled,
+.account-signout:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.google-mark {
+  color: #4285f4;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.account-error {
+  margin: 12px 0 0;
+  color: #a6382d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.account-google-button:focus-visible,
+.account-signout:focus-visible,
+.account-text-button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .task-composer {
   padding: 0;
   border: 0;
@@ -3065,6 +3248,10 @@ body {
   font-weight: 800;
 }
 
+.bottom-tab-bar button[aria-haspopup='dialog'][aria-expanded='true'] {
+  color: var(--teal);
+}
+
 .bottom-tab-bar button:active,
 .dashboard-fab:active,
 .add-task-fab:active {
@@ -3079,7 +3266,6 @@ body {
 
 :root[data-theme='dark'] .category-card,
 :root[data-theme='dark'] .task-row,
-:root[data-theme='dark'] .focus-ritual,
 :root[data-theme='dark'] .phone-progress,
 :root[data-theme='dark'] .dashboard-progress-content,
 :root[data-theme='dark'] .composer-sheet {
@@ -3100,11 +3286,43 @@ body {
 }
 
 :root[data-theme='dark'] .dashboard-progress-content strong,
-:root[data-theme='dark'] .focus-ritual-copy strong,
 :root[data-theme='dark'] .task-title,
 :root[data-theme='dark'] .composer-heading,
-:root[data-theme='dark'] .composer-option span {
+:root[data-theme='dark'] .composer-option span,
+:root[data-theme='dark'] .settings-theme-field legend,
+:root[data-theme='dark'] .settings-info h3,
+:root[data-theme='dark'] .settings-theme-option {
   color: var(--ink);
+}
+
+:root[data-theme='dark'] .settings-theme-option {
+  background: #3b3c34;
+  border-color: var(--line);
+}
+
+:root[data-theme='dark'] .settings-theme-option.is-selected {
+  background: color-mix(in srgb, var(--teal) 16%, #3b3c34);
+}
+
+:root[data-theme='dark'] .account-message,
+:root[data-theme='dark'] .account-sync-state {
+  background: #3b3c34;
+  border-color: var(--line);
+}
+
+:root[data-theme='dark'] .account-signout {
+  background: var(--evergreen);
+  color: var(--paper);
+}
+
+:root[data-theme='dark'] .account-google-button {
+  background: #3b3c34;
+  color: var(--ink);
+}
+
+:root[data-theme='dark'] .account-text-button,
+:root[data-theme='dark'] .settings-account-button {
+  color: var(--teal);
 }
 
 :root[data-theme='dark'] .completed-task-list .task-row,
@@ -3115,6 +3333,10 @@ body {
 :root[data-theme='dark'] .bottom-tab-bar button,
 :root[data-theme='dark'] .completed-group-toggle {
   color: var(--ink-soft);
+}
+
+:root[data-theme='dark'] .bottom-tab-bar button[aria-haspopup='dialog'][aria-expanded='true'] {
+  color: var(--teal);
 }
 
 @media (min-width: 640px) {
@@ -3134,7 +3356,6 @@ body {
   body,
   .category-cards,
   .tasks-screen-body,
-  .mobile-categories,
   .category-pill-list,
   .composer-sheet {
     scrollbar-width: none;
@@ -3145,7 +3366,6 @@ body {
   body::-webkit-scrollbar,
   .category-cards::-webkit-scrollbar,
   .tasks-screen-body::-webkit-scrollbar,
-  .mobile-categories::-webkit-scrollbar,
   .category-pill-list::-webkit-scrollbar,
   .composer-sheet::-webkit-scrollbar {
     display: none;
@@ -3180,8 +3400,7 @@ body {
 
   .dashboard-category-heading,
   .category-cards,
-  .dashboard-progress,
-  .focus-ritual {
+  .dashboard-progress {
     grid-column: 1;
     grid-row: auto;
   }
@@ -3194,8 +3413,7 @@ body {
     margin: 0 16px;
   }
 
-  .dashboard-progress,
-  .focus-ritual {
+  .dashboard-progress {
     margin-inline: 16px;
   }
 
@@ -3601,10 +3819,6 @@ body {
 }
 
 @media (max-width: 700px) {
-  .mobile-categories {
-    display: flex;
-  }
-
   .dashboard-category-heading > button {
     min-height: 44px;
   }
@@ -3627,14 +3841,6 @@ body {
 
   .undo-button {
     padding-inline: 10px;
-  }
-
-  .mobile-categories button {
-    min-height: 44px;
-  }
-
-  .focus-ritual > button {
-    min-height: 44px;
   }
 
   .completed-group-toggle {
@@ -3719,6 +3925,21 @@ body {
 
   .task-actions .icon-button svg {
     position: relative;
+  }
+}
+
+@media (max-width: 420px) {
+  .settings-theme-options {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-theme-option {
+    min-height: 48px;
+    align-items: center;
+  }
+
+  .settings-theme-option input {
+    margin-top: 0;
   }
 }
 

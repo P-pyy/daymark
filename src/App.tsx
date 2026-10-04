@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
+  ArrowRight,
   ArrowCounterClockwise,
   BookOpen,
   Briefcase,
   CheckCircle,
+  GearSix,
   HouseLine,
   ListChecks,
   MagnifyingGlass,
@@ -14,10 +16,15 @@ import {
   User,
   X,
 } from '@phosphor-icons/react'
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
+import { AccountDialog, type AccountSyncState } from './AccountDialog'
 import { TaskComposerDialog } from './TaskComposerDialog'
 import { TaskDetailsDialog } from './TaskDetailsDialog'
 import { TaskItem } from './TaskItem'
+import { SettingsDialog, type ThemePreference } from './SettingsDialog'
 import { readTasksWithStatus, writeTasks } from './taskStorage'
+import { addTaskTombstones, clearLocalAccountTasks, mergeTaskLists, readTaskTombstones, removeTaskTombstone, synchronizeTaskSet, taskFromRecord, writeTaskTombstones } from './taskSync'
+import { supabase } from './supabaseClient'
 import { categories, type Category, type Priority, type Task } from './taskTypes'
 import { getLocalDateKey, isTaskDueToday, sortTasks, type TaskSortOrder } from './taskUtils'
 import heroIllustration from './assets/daymark-welcome-illustration.png'
@@ -25,7 +32,6 @@ import './TodoReference.css'
 
 type TaskFilter = 'All' | 'Active' | 'Completed'
 type CategoryFilter = Category | 'All' | 'Today'
-type ThemePreference = 'system' | 'light' | 'dark'
 type ResolvedTheme = 'light' | 'dark'
 type AppScreen = 'welcome' | 'categories' | 'tasks'
 type TaskStorageIssue = 'load' | 'save'
@@ -75,6 +81,10 @@ function readInitialScreen(hasTasks: boolean): AppScreen {
 
 function getSystemTheme(): ResolvedTheme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+function getCurrentTimestamp() {
+  return Date.now()
 }
 
 function rememberSplash() {
@@ -133,14 +143,28 @@ function App() {
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference)
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(getSystemTheme)
   const [tasks, setTasks] = useState<Task[]>(storedTaskState.tasks)
+  const tasksRef = useRef(tasks)
   const [taskStorageIssue, setTaskStorageIssue] = useState<TaskStorageIssue | null>(storedTaskState.failed ? 'load' : null)
   const [filter, setFilter] = useState<TaskFilter>('All')
   const [sortOrder, setSortOrder] = useState<TaskSortOrder>('newest')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(readCategoryFilter)
   const [query, setQuery] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [accountUser, setAccountUser] = useState<SupabaseUser | null>(null)
+  const [authReady, setAuthReady] = useState(!supabase)
+  const [syncState, setSyncState] = useState<AccountSyncState>('idle')
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const [loginNoticeError, setLoginNoticeError] = useState<string | null>(null)
   const [detailsTaskId, setDetailsTaskId] = useState<string | null>(null)
   const composerTriggerRef = useRef<HTMLElement | null>(null)
+  const settingsTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const accountTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const manualSignOutRef = useRef(false)
+  const syncStateRef = useRef(syncState)
+  const sentLoginNoticeTokens = useRef(new Set<string>())
+  const syncNowRef = useRef<() => void>(() => undefined)
   const detailsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const taskSearchRef = useRef<HTMLInputElement>(null)
   const composerWasOpen = useRef(false)
@@ -151,16 +175,18 @@ function App() {
   const [clearConfirmation, setClearConfirmation] = useState(false)
   const [announcement, setAnnouncement] = useState('')
   const theme = themePreference === 'system' ? systemTheme : themePreference
-  const modalOpen = composerOpen || detailsTaskId !== null
+  const modalOpen = composerOpen || settingsOpen || accountOpen || detailsTaskId !== null
 
   function toggleTheme() {
     setThemePreference(theme === 'dark' ? 'light' : 'dark')
   }
 
   function saveTasks(nextTasks: Task[]) {
+    tasksRef.current = nextTasks
     setTasks(nextTasks)
     if (taskStorageIssue === 'load') return
     setTaskStorageIssue(writeTasks(nextTasks) ? null : 'save')
+    if (accountUser) setSyncState('syncing')
   }
 
   function retryTaskStorage() {
@@ -168,8 +194,79 @@ function App() {
       window.location.reload()
       return
     }
+
     setTaskStorageIssue(writeTasks(tasks) ? null : 'save')
   }
+
+  async function signInWithGoogle() {
+    if (!supabase) throw new Error('Profile sign-in is not configured yet.')
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+        scopes: 'openid email profile',
+      },
+    })
+    if (error) throw error
+  }
+
+  async function signOut() {
+    if (!supabase) throw new Error('Profile sign-in is not configured yet.')
+    if (syncState !== 'synced') throw new Error('Reconnect and sync pending changes before signing out.')
+    const previousTasks = tasksRef.current
+    if (!clearLocalAccountTasks()) throw new Error('Could not clear this device’s account task cache. You are still signed in.')
+    tasksRef.current = []
+    setTasks([])
+    manualSignOutRef.current = true
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+    } catch (error) {
+      manualSignOutRef.current = false
+      tasksRef.current = previousTasks
+      setTasks(previousTasks)
+      if (!writeTasks(previousTasks)) {
+        setTaskStorageIssue('save')
+        setSyncError('Sign-out failed and this device could not restore the task cache.')
+        setSyncState('error')
+      }
+      throw error
+    }
+  }
+
+  const sendLoginNotice = useCallback(async (session: Session) => {
+    if (!supabase || sentLoginNoticeTokens.current.has(session.access_token)) return
+    sentLoginNoticeTokens.current.add(session.access_token)
+    try {
+      const { error } = await supabase.functions.invoke('send-login-notice', { body: {} })
+      setLoginNoticeError(error
+        ? 'The sign-in email could not be sent. Check the email service configuration, then retry.'
+        : null)
+    } catch {
+      setLoginNoticeError('The sign-in email could not be sent. Check the email service configuration, then retry.')
+    }
+  }, [])
+
+  function retryLoginNotice() {
+    if (!supabase || !accountUser) return
+    void supabase.functions.invoke('send-login-notice', { body: {} }).then(({ error }) => {
+      setLoginNoticeError(error
+        ? 'The sign-in email could not be sent. Check the email service configuration, then retry.'
+        : null)
+    }).catch(() => {
+      setLoginNoticeError('The sign-in email could not be sent. Check the email service configuration, then retry.')
+    })
+  }
+
+  function openAccount(trigger?: HTMLButtonElement) {
+    accountTriggerRef.current = trigger ?? null
+    setSettingsOpen(false)
+    setAccountOpen(true)
+  }
+
+  useEffect(() => {
+    syncStateRef.current = syncState
+  }, [syncState])
 
   useEffect(() => {
     if (activeNavigation === 'search') taskSearchRef.current?.focus()
@@ -229,6 +326,200 @@ function App() {
       detailsTriggerRef.current = null
     }
   }, [detailsTaskId])
+
+  useEffect(() => {
+    if (settingsOpen) return
+    settingsTriggerRef.current?.focus()
+    settingsTriggerRef.current = null
+  }, [settingsOpen])
+
+  useEffect(() => {
+    if (accountOpen) return
+    accountTriggerRef.current?.focus()
+    accountTriggerRef.current = null
+  }, [accountOpen])
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let active = true
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return
+      if (event === 'SIGNED_OUT') {
+        const wasManualSignOut = manualSignOutRef.current
+        manualSignOutRef.current = false
+        if (wasManualSignOut && !clearLocalAccountTasks()) {
+          setSyncError('Could not clear account task data from this device.')
+          setSyncState('error')
+        } else if (!wasManualSignOut && syncStateRef.current !== 'synced') {
+          setSyncError('Your session ended before pending changes synced. Your local tasks were kept on this device.')
+          setSyncState('error')
+        } else {
+          if (!wasManualSignOut && !clearLocalAccountTasks()) {
+            setSyncError('Could not clear account task data from this device.')
+            setSyncState('error')
+          } else {
+            tasksRef.current = []
+            setTasks([])
+            setSyncState('idle')
+          }
+        }
+        setAccountUser(null)
+        return
+      }
+      if (session) {
+        setAccountUser(session.user)
+        if (event === 'SIGNED_IN') void sendLoginNotice(session)
+      }
+      setAuthReady(true)
+    })
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return
+      if (error) {
+        setSyncError('Could not restore your sign-in session. Check your connection and try again.')
+        setSyncState('error')
+      }
+      setAccountUser(data.session?.user ?? null)
+      setAuthReady(true)
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [sendLoginNotice])
+
+  useEffect(() => {
+    if (!supabase || !authReady || !accountUser) {
+      syncNowRef.current = () => undefined
+      return
+    }
+    const client = supabase
+
+    let active = true
+    let syncing = false
+    let rerun = false
+    const synchronize = async () => {
+      if (syncing) {
+        rerun = true
+        return
+      }
+      syncing = true
+      setSyncState('syncing')
+      setSyncError(null)
+      try {
+        if (taskStorageIssue === 'load') {
+          throw new Error('Stored tasks could not be read safely. Reload the app before syncing.')
+        }
+        const localSnapshot = tasksRef.current
+        const tombstoneSnapshot = readTaskTombstones()
+        const result = await synchronizeTaskSet(accountUser.id, localSnapshot, tombstoneSnapshot)
+        if (!active) return
+        const currentTombstones = readTaskTombstones()
+        const changedWhileSyncing = !sameTaskLists(localSnapshot, tasksRef.current)
+          || !sameTombstones(tombstoneSnapshot, currentTombstones)
+        const merged = changedWhileSyncing
+          ? mergeTaskLists(tasksRef.current, result.tasks, currentTombstones, result.deletedTasks)
+          : result.tasks
+        if (!sameTaskLists(tasksRef.current, merged)) {
+          tasksRef.current = merged
+          setTasks(merged)
+          const saved = writeTasks(merged)
+          setTaskStorageIssue(saved ? null : 'save')
+          if (!saved) throw new Error('Tasks synced, but the updated task list could not be saved on this device.')
+        }
+        const pendingTombstones = currentTombstones.filter((current) => {
+          const synced = tombstoneSnapshot.find((snapshot) => snapshot.id === current.id)
+          return !synced || synced.updatedAt !== current.updatedAt
+        })
+        if (!writeTaskTombstones(pendingTombstones)) {
+          throw new Error('Synced tasks, but could not clear the local sync queue.')
+        }
+        setSyncState(changedWhileSyncing ? 'syncing' : 'synced')
+        if (changedWhileSyncing) rerun = true
+      } catch (error) {
+        if (!active) return
+        setSyncError(error instanceof Error ? error.message : 'Task sync failed. Please try again.')
+        setSyncState(navigator.onLine ? 'error' : 'offline')
+      } finally {
+        syncing = false
+        if (rerun && active) {
+          rerun = false
+          void synchronize()
+        }
+      }
+    }
+    syncNowRef.current = () => { void synchronize() }
+    void synchronize()
+
+    const channel = client
+      .channel(`tasks:${accountUser.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'tasks',
+        filter: `owner_id=eq.${accountUser.id}`,
+      }, (event) => {
+        try {
+          const record = event.new as unknown as Parameters<typeof taskFromRecord>[0]
+          if (typeof record.id !== 'string' || typeof record.updated_at !== 'number' || typeof record.is_deleted !== 'boolean') return
+          const incomingTask = taskFromRecord(record)
+          const currentTasks = tasksRef.current
+          const currentTask = currentTasks.find((task) => task.id === record.id)
+          const currentTombstone = readTaskTombstones().find((item) => item.id === record.id)
+          const localUpdatedAt = currentTombstone?.updatedAt ?? (currentTask?.updatedAt ?? currentTask?.createdAt ?? -1)
+          if (record.updated_at <= localUpdatedAt) return
+
+          const nextTasks = incomingTask
+            ? [...currentTasks.filter((task) => task.id !== record.id), incomingTask].sort((a, b) => b.createdAt - a.createdAt)
+            : currentTasks.filter((task) => task.id !== record.id)
+          if (record.is_deleted) {
+            addTaskTombstones([record.id], record.updated_at)
+          } else {
+            removeTaskTombstone(record.id)
+          }
+          tasksRef.current = nextTasks
+          setTasks(nextTasks)
+          if (!writeTasks(nextTasks)) {
+            setSyncError('A change arrived from another device but could not be saved on this device.')
+            setSyncState('error')
+          }
+        } catch (error) {
+          setSyncError(error instanceof Error ? error.message : 'A change from another device could not be applied.')
+          setSyncState('error')
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          syncNowRef.current()
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setSyncError('Live task updates are unavailable. Daymark will retry during the next sync.')
+          setSyncState('error')
+        }
+      })
+
+    const handleOnline = () => syncNowRef.current()
+    const handleOffline = () => {
+      setSyncError('Your changes are saved on this device and will sync when you reconnect.')
+      setSyncState('offline')
+    }
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      active = false
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+      syncNowRef.current = () => undefined
+      void client.removeChannel(channel)
+    }
+  }, [accountUser, authReady, taskStorageIssue])
+
+  useEffect(() => {
+    if (!authReady || !accountUser) return
+    const retryTimer = window.setTimeout(() => syncNowRef.current(), 350)
+    return () => window.clearTimeout(retryTimer)
+  }, [tasks, accountUser, authReady])
 
   useEffect(() => {
     try {
@@ -301,9 +592,10 @@ function App() {
   }).format(now)
 
   function addTask(title: string, priority: Priority, dueDate: string, category: Category) {
+    const createdAt = getCurrentTimestamp()
     const task: Task = {
       id: crypto.randomUUID(), title, priority, dueDate, category,
-      completed: false, createdAt: Date.now(), notes: '', subtasks: [],
+      completed: false, createdAt, updatedAt: createdAt, notes: '', subtasks: [],
     }
     saveTasks([task, ...tasks])
     setFilter('All')
@@ -342,7 +634,9 @@ function App() {
   }
 
   function updateTask(updatedTask: Task) {
-    saveTasks(tasks.map((task) => task.id === updatedTask.id ? updatedTask : task))
+    saveTasks(tasks.map((task) => task.id === updatedTask.id
+      ? { ...updatedTask, updatedAt: Math.max(getCurrentTimestamp(), (task.updatedAt ?? task.createdAt) + 1) }
+      : task))
     setAnnouncement(`Updated ${updatedTask.title}`)
   }
 
@@ -358,12 +652,23 @@ function App() {
 
   function toggleTask(task: Task) {
     const completed = !task.completed
-    saveTasks(tasks.map((item) => item.id === task.id ? { ...item, completed } : item))
+    saveTasks(tasks.map((item) => item.id === task.id
+      ? { ...item, completed, updatedAt: Math.max(getCurrentTimestamp(), (item.updatedAt ?? item.createdAt) + 1) }
+      : item))
     setAnnouncement(`${completed ? 'Completed' : 'Restored'} ${task.title}`)
   }
 
   function deleteTask(task: Task) {
     const index = tasks.findIndex((item) => item.id === task.id)
+    if (accountUser) {
+      try {
+        addTaskTombstones([task.id], Math.max(getCurrentTimestamp(), (task.updatedAt ?? task.createdAt) + 1))
+      } catch (error) {
+        setSyncError(error instanceof Error ? error.message : 'Could not queue the task deletion for sync.')
+        setSyncState('error')
+        return
+      }
+    }
     saveTasks(tasks.filter((item) => item.id !== task.id))
     setUndoTask({ task, index })
     setAnnouncement(`Deleted ${task.title}. Undo is available.`)
@@ -372,14 +677,39 @@ function App() {
 
   function undoDelete() {
     if (!undoTask) return
+    if (accountUser) {
+      try {
+        removeTaskTombstone(undoTask.task.id)
+      } catch (error) {
+        setSyncError(error instanceof Error ? error.message : 'Could not restore this task safely.')
+        setSyncState('error')
+        return
+      }
+    }
     const restoredTasks = [...tasks]
-    restoredTasks.splice(undoTask.index, 0, undoTask.task)
+    restoredTasks.splice(undoTask.index, 0, accountUser
+      ? { ...undoTask.task, updatedAt: Math.max(getCurrentTimestamp(), (undoTask.task.updatedAt ?? undoTask.task.createdAt) + 1) }
+      : undoTask.task)
     saveTasks(restoredTasks)
     setAnnouncement(`Restored ${undoTask.task.title}`)
     setUndoTask(null)
   }
 
   function clearCompleted() {
+    if (accountUser) {
+      try {
+        const completedTasks = tasks.filter((task) => task.completed && matchesCategory(task))
+        const latestTaskTimestamp = Math.max(...completedTasks.map((task) => task.updatedAt ?? task.createdAt))
+        addTaskTombstones(
+          completedTasks.map((task) => task.id),
+          Math.max(getCurrentTimestamp(), latestTaskTimestamp + 1),
+        )
+      } catch (error) {
+        setSyncError(error instanceof Error ? error.message : 'Could not queue completed task deletions for sync.')
+        setSyncState('error')
+        return
+      }
+    }
     saveTasks(tasks.filter((task) => !task.completed || !matchesCategory(task)))
     setAnnouncement(`Removed ${scopedCompletedCount} completed tasks`)
     setClearConfirmation(false)
@@ -451,19 +781,29 @@ function App() {
                 <span className="screen-date">{dateLabel}</span>
                 <div className="category-screen-actions">
                   <ThemeToggle theme={theme} onToggle={toggleTheme} />
-                  <span className="greeting-portrait" aria-hidden="true"><User size={22} weight="fill" /></span>
+                  <button
+                    className="greeting-portrait"
+                    type="button"
+                    aria-label={accountUser ? 'Open profile' : 'Sign in with Google'}
+                    aria-haspopup="dialog"
+                    onClick={(event) => openAccount(event.currentTarget)}
+                  >
+                    {typeof (accountUser?.user_metadata.avatar_url ?? accountUser?.user_metadata.picture) === 'string'
+                      ? <img src={String(accountUser?.user_metadata.avatar_url ?? accountUser?.user_metadata.picture)} alt="" referrerPolicy="no-referrer" />
+                      : <User size={22} weight="fill" aria-hidden="true" />}
+                  </button>
                 </div>
               </div>
               <div className="greeting-row">
                 <div>
-                  <p className="screen-greeting"><span aria-hidden="true">‹</span> A fresh start</p>
+                  <p className="screen-greeting"><ArrowLeft size={16} weight="bold" aria-hidden="true" />A fresh start</p>
                   <h2>Today</h2>
                   <p className="today-subtitle">You have <strong>{todayActiveCount} {todayActiveCount === 1 ? 'task' : 'tasks'}</strong> due today</p>
                 </div>
               </div>
               <button className="quick-intake" type="button" onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}>
                 <span className="quick-intake-copy"><Plus size={20} aria-hidden="true" />Plan a new thought or task...</span>
-                <span className="quick-intake-submit" aria-hidden="true">›</span>
+                <span className="quick-intake-submit" aria-hidden="true"><ArrowRight size={19} weight="bold" /></span>
               </button>
             </header>
             <div className="dashboard-category-heading">
@@ -513,11 +853,6 @@ function App() {
                   <p>“Small steps every morning lead to quiet afternoons.”</p>
                 </div>
               </div>
-            </section>
-            <section className="focus-ritual" aria-label="Morning focus ritual">
-              <span className="focus-ritual-icon"><Sun size={20} weight="duotone" aria-hidden="true" /></span>
-              <span className="focus-ritual-copy"><strong>Morning Focus Ritual</strong><small>Breathe, sip, and finish one important item</small></span>
-              <button type="button" onClick={() => { setScreen('tasks'); setActiveNavigation('categories') }}>Begin</button>
             </section>
             <button className="dashboard-fab" type="button" aria-label="Add a task" onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}><Plus size={26} weight="bold" aria-hidden="true" /></button>
           </div>
@@ -580,13 +915,6 @@ function App() {
             </header>
 
             <div className="tasks-screen-body">
-              <nav className="mobile-categories" aria-label="Task categories">
-                <button type="button" className={categoryFilter === 'Today' ? 'is-current' : ''} aria-current={categoryFilter === 'Today' ? 'page' : undefined} onClick={() => { setCategoryFilter('Today'); setFilter('All'); setQuery(''); setActiveNavigation('categories') }}>Today</button>
-                {categories.map((category) => (
-                  <button type="button" className={categoryFilter === category ? 'is-current' : ''} aria-current={categoryFilter === category ? 'page' : undefined} key={category} onClick={() => { setCategoryFilter(category); setFilter('All'); setQuery(''); setActiveNavigation('categories') }}>{category}</button>
-                ))}
-              </nav>
-
               <div className="task-controls">
                 <div className="filter-group" role="group" aria-label="Filter tasks">
                   {(['All', 'Active', 'Completed'] as const).map((option) => (
@@ -685,7 +1013,7 @@ function App() {
             <button type="button" className={activeNavigation === 'today' ? 'is-current' : ''} aria-current={activeNavigation === 'today' ? 'page' : undefined} onClick={openTodayDashboard}><Sun size={21} weight="duotone" aria-hidden="true" /><span>Today</span></button>
             <button type="button" className={activeNavigation === 'categories' ? 'is-current' : ''} aria-current={activeNavigation === 'categories' ? 'page' : undefined} onClick={() => selectCategory('All')}><ListChecks size={21} aria-hidden="true" /><span>Categories</span></button>
             <button type="button" className={activeNavigation === 'search' ? 'is-current' : ''} aria-current={activeNavigation === 'search' ? 'page' : undefined} onClick={() => { setScreen('tasks'); setActiveNavigation('search') }}><MagnifyingGlass size={21} aria-hidden="true" /><span>Search</span></button>
-            <button type="button" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} onClick={toggleTheme}><Moon size={21} aria-hidden="true" /><span>Theme</span></button>
+            <button type="button" aria-haspopup="dialog" aria-expanded={settingsOpen} onClick={(event) => { settingsTriggerRef.current = event.currentTarget; setSettingsOpen(true) }}><GearSix size={21} aria-hidden="true" /><span>Settings</span></button>
           </nav>
         )}
         {composerOpen && (
@@ -703,6 +1031,28 @@ function App() {
             onClose={() => setDetailsTaskId(null)}
           />
         )}
+        {settingsOpen && (
+          <SettingsDialog
+            themePreference={themePreference}
+            onThemePreferenceChange={setThemePreference}
+            onManageAccount={() => openAccount(settingsTriggerRef.current ?? undefined)}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
+        {accountOpen && (
+          <AccountDialog
+            configured={Boolean(supabase)}
+            user={accountUser}
+            syncState={syncState}
+            syncError={syncError}
+            loginNoticeError={loginNoticeError}
+            onSignIn={signInWithGoogle}
+            onSignOut={signOut}
+            onRetrySync={() => syncNowRef.current()}
+            onRetryLoginNotice={retryLoginNotice}
+            onClose={() => setAccountOpen(false)}
+          />
+        )}
       </main>
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
       {showSplash && (
@@ -716,6 +1066,14 @@ function App() {
       )}
     </div>
   )
+}
+
+function sameTaskLists(left: Task[], right: Task[]) {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function sameTombstones(left: ReturnType<typeof readTaskTombstones>, right: ReturnType<typeof readTaskTombstones>) {
+  return JSON.stringify(left) === JSON.stringify(right)
 }
 
 export default App

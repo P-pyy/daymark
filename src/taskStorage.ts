@@ -32,7 +32,7 @@ export function writeTasks(tasks: Task[]): boolean {
   }
 }
 
-function isTask(value: unknown): value is Task {
+export function isTask(value: unknown): value is Task {
   if (!value || typeof value !== 'object') return false
   const task = value as Partial<Task>
   return (
@@ -43,6 +43,8 @@ function isTask(value: unknown): value is Task {
     typeof task.dueDate === 'string' &&
     (task.category === 'Work' || task.category === 'Personal' || task.category === 'Home' || task.category === 'Learning') &&
     typeof task.createdAt === 'number' &&
+    Number.isFinite(task.createdAt) &&
+    (task.updatedAt === undefined || (typeof task.updatedAt === 'number' && Number.isFinite(task.updatedAt))) &&
     (task.notes === undefined || typeof task.notes === 'string') &&
     (task.subtasks === undefined || (Array.isArray(task.subtasks) && task.subtasks.every(isSubtask)))
   )
@@ -54,7 +56,7 @@ function isSubtask(value: unknown): value is NonNullable<Task['subtasks']>[numbe
   return typeof subtask.id === 'string' && typeof subtask.title === 'string' && typeof subtask.completed === 'boolean'
 }
 
-function normalizeTask(task: Task): Task {
+export function normalizeTask(task: Task): Task {
   return {
     ...task,
     notes: task.notes ?? '',

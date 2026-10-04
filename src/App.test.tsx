@@ -3,10 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { type Category, type Task } from './taskTypes'
 
+vi.mock('./supabaseClient', () => ({ supabase: null }))
+
 const tasksStorageKey = 'daymark.tasks.v1'
 const categoryStorageKey = 'daymark.category.filter.v1'
 const onboardingStorageKey = 'daymark.onboarding.complete.v1'
 const splashStorageKey = 'daymark.splash.seen.v1'
+const themeStorageKey = 'daymark.theme.preference.v1'
 
 function dateKey(offset = 0) {
   const date = new Date()
@@ -61,6 +64,11 @@ function chooseTodayCategory() {
   fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: /^Today/ }))
 }
 
+function chooseCategoryFromDashboard(category: Category) {
+  fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+  fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: new RegExp(`^${category}`) }))
+}
+
 function openTaskComposer() {
   fireEvent.click(within(screen.getByRole('region', { name: 'Your task list' })).getByRole('button', { name: 'Add a task' }))
 }
@@ -83,10 +91,72 @@ describe('Daymark task UI', () => {
 
     expect(screen.getByRole('main', { name: 'Welcome to Daymark' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Get started' }))
+    const categoryRegion = screen.getByRole('region', { name: 'Task categories' })
+    expect(screen.queryByRole('region', { name: 'Morning focus ritual' })).not.toBeInTheDocument()
+    expect(within(categoryRegion).getByRole('button', { name: /^Personal/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Manage' }))
 
     expect(screen.getByRole('main', { name: 'Daymark task planner' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Task categories' })).not.toBeInTheDocument()
+  })
+
+  it('opens Settings from the bottom navigation and updates the saved appearance preference', () => {
+    renderTasks()
+
+    const navigation = within(screen.getByRole('navigation', { name: 'Primary' }))
+    expect(navigation.queryByRole('button', { name: /Theme/ })).not.toBeInTheDocument()
+    const settingsButton = navigation.getByRole('button', { name: 'Settings' })
+    fireEvent.click(settingsButton)
+
+    const dialog = screen.getByRole('dialog', { name: 'Settings' })
+    const darkOption = within(dialog).getByRole('radio', { name: /Dark/ })
+    const systemOption = within(dialog).getByRole('radio', { name: /System/ })
+    expect(systemOption).toBeChecked()
+    expect(within(dialog).getByText(/sync to your account/)).toBeInTheDocument()
+    expect(systemOption).toHaveFocus()
+    fireEvent.click(darkOption)
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
+    expect(localStorage.getItem(themeStorageKey)).toBe('dark')
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
+    expect(settingsButton).toHaveFocus()
+
+    fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: 'Switch to light theme' }))
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light')
+    expect(localStorage.getItem(themeStorageKey)).toBe('light')
+
+    fireEvent.click(settingsButton)
+    const reopenedDialog = screen.getByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(reopenedDialog).getByRole('radio', { name: /System/ }))
+    expect(localStorage.getItem(themeStorageKey)).toBeNull()
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light')
+  })
+
+  it('opens the profile from the dashboard avatar and explains missing account setup', () => {
+    renderTasks()
+
+    const profileButton = screen.getByRole('button', { name: 'Sign in with Google' })
+    fireEvent.click(profileButton)
+
+    const dialog = screen.getByRole('dialog', { name: 'Profile' })
+    expect(within(dialog).getByRole('heading', { name: 'Profile setup is needed' })).toBeInTheDocument()
+    expect(within(dialog).getByText(/Supabase project and Google sign-in configuration/)).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(profileButton).toHaveFocus()
+  })
+
+  it('opens the profile from Settings', () => {
+    renderTasks()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Settings' }))
+
+    const settingsDialog = screen.getByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(settingsDialog).getByRole('button', { name: 'Manage profile' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Profile' })).toBeInTheDocument()
   })
 
   it('opens the named composer, focuses the title, traps focus and restores focus on Escape', () => {
@@ -135,6 +205,7 @@ describe('Daymark task UI', () => {
       dueDate: dateKey(),
       category: 'Personal',
       createdAt: expect.any(Number),
+      updatedAt: expect.any(Number),
       notes: '',
       subtasks: [],
     }])
@@ -232,12 +303,10 @@ describe('Daymark task UI', () => {
     expect(screen.getByText('Read handbook', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('Review planning', { exact: true })).not.toBeInTheDocument()
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
-    const categoryNavigation = within(screen.getByRole('navigation', { name: 'Task categories' }))
-    fireEvent.click(categoryNavigation.getByRole('button', { name: 'Home' }))
+    chooseCategoryFromDashboard('Home')
     expect(screen.getByText('Tidy entryway', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('Read handbook', { exact: true })).not.toBeInTheDocument()
-    fireEvent.click(categoryNavigation.getByRole('button', { name: 'Work' }))
+    chooseCategoryFromDashboard('Work')
     expect(screen.getByText('Review planning', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('Tidy entryway', { exact: true })).not.toBeInTheDocument()
 
@@ -299,8 +368,7 @@ describe('Daymark task UI', () => {
     fireEvent.change(sort, { target: { value: 'due-date' } })
     expectTaskListOrder(['Home task', 'Earlier work', 'Later work', 'Undated work', 'Done work'])
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Task categories' })).getByRole('button', { name: 'Work' }))
+    chooseCategoryFromDashboard('Work')
     const search = screen.getByRole('searchbox', { name: 'Search tasks' })
     fireEvent.change(search, { target: { value: 'work' } })
     fireEvent.click(within(screen.getByRole('group', { name: 'Filter tasks' })).getByRole('button', { name: 'Active' }))
@@ -368,8 +436,7 @@ describe('Daymark task UI', () => {
     openDashboard()
     chooseTodayCategory()
     expect(screen.getByRole('heading', { name: 'No tasks due today' })).toBeInTheDocument()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Task categories' })).getByRole('button', { name: 'Work' }))
+    chooseCategoryFromDashboard('Work')
     expect(screen.getByRole('heading', { name: 'No tasks in Work' })).toBeInTheDocument()
 
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
@@ -388,7 +455,7 @@ describe('Daymark task UI', () => {
       makeTask('Home item', { category: 'Home' }),
     ])
     expect(screen.getByRole('group', { name: '3 total, 2 active, 1 completed' })).toBeInTheDocument()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Task categories' })).getByRole('button', { name: 'Work' }))
+    chooseCategoryFromDashboard('Work')
     expect(screen.getByRole('group', { name: '2 total, 1 active, 1 completed' })).toBeInTheDocument()
   })
 
@@ -588,7 +655,13 @@ describe('Daymark task UI', () => {
     expect(localStorage.getItem(tasksStorageKey)).toBe(JSON.stringify([task]))
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry save' }))
-    expect(JSON.parse(localStorage.getItem(tasksStorageKey) || '[]')).toEqual([{ ...task, completed: true, notes: '', subtasks: [] }])
+    expect(JSON.parse(localStorage.getItem(tasksStorageKey) || '[]')).toEqual([{
+      ...task,
+      completed: true,
+      updatedAt: expect.any(Number),
+      notes: '',
+      subtasks: [],
+    }])
     expect(screen.queryByRole('button', { name: 'Retry save' })).not.toBeInTheDocument()
   })
 })

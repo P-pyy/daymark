@@ -20,6 +20,7 @@ export interface Task {
   dueDate: string
   category: Category
   createdAt: number
+  updatedAt?: number
   notes?: string
   subtasks?: Subtask[]
 }
