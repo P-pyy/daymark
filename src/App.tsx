@@ -20,7 +20,7 @@ import { TaskItem } from './TaskItem'
 import { readTasksWithStatus, writeTasks } from './taskStorage'
 import { categories, type Category, type Priority, type Task } from './taskTypes'
 import { getLocalDateKey, isTaskDueToday, sortTasks, type TaskSortOrder } from './taskUtils'
-import heroIllustration from '../design-reference/stitch/cute_friendly_minimalist_vector_sticker_illustration_on_a_soft_warm_cream/screen.png'
+import heroIllustration from './assets/daymark-welcome-illustration.png'
 import './TodoReference.css'
 
 type TaskFilter = 'All' | 'Active' | 'Completed'
