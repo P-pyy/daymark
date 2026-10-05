@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="176" height="154" viewBox="0 0 176 154" fill="none">
+  <path d="M20 110c0-25 30-45 68-45s68 20 68 45-30 37-68 37-68-12-68-37Z" fill="#FAD9E5"/>
+  <path d="m87 13 5 13 14 1-11 9 4 14-12-8-12 8 4-14-11-9 14-1 5-13Z" fill="#F7C6D8"/>
+  <g stroke="#D6407A" stroke-linecap="round" stroke-width="4">
+    <path d="M88 20v-7m0 84v-7M49 58h-7m92 0h-7M60 30l-5-5m66 66-5-5m0-56 5-5M55 91l5-5"/>
+  </g>
+  <circle cx="88" cy="58" r="35" fill="#FFD970" stroke="#B87439" stroke-width="3"/>
+  <circle cx="77" cy="57" r="2.5" fill="#613D43"/>
+  <circle cx="99" cy="57" r="2.5" fill="#613D43"/>
+  <path d="M80 68c5 6 11 6 16 0" stroke="#A64B6F" stroke-linecap="round" stroke-width="3"/>
+  <ellipse cx="70" cy="65" rx="5" ry="3" fill="#E79CAF" opacity=".8"/>
+  <ellipse cx="106" cy="65" rx="5" ry="3" fill="#E79CAF" opacity=".8"/>
+  <path d="M41 103h94a8 8 0 0 1 8 8v22a8 8 0 0 1-8 8H41a8 8 0 0 1-8-8v-22a8 8 0 0 1 8-8Z" fill="#fff" stroke="#F0B9CC" stroke-width="2"/>
+  <path d="m48 118 4 4 8-9m8 4h20m-40 12 4 4 8-9m8 4h27" stroke="#D6407A" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+  <path d="m139 37 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7ZM31 65l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z" fill="#E8A6BB"/>
+</svg>

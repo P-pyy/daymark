@@ -23,4 +23,5 @@ export interface Task {
   updatedAt?: number
   notes?: string
   subtasks?: Subtask[]
+  favorite?: boolean
 }

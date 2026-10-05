@@ -46,7 +46,8 @@ export function isTask(value: unknown): value is Task {
     Number.isFinite(task.createdAt) &&
     (task.updatedAt === undefined || (typeof task.updatedAt === 'number' && Number.isFinite(task.updatedAt))) &&
     (task.notes === undefined || typeof task.notes === 'string') &&
-    (task.subtasks === undefined || (Array.isArray(task.subtasks) && task.subtasks.every(isSubtask)))
+    (task.subtasks === undefined || (Array.isArray(task.subtasks) && task.subtasks.every(isSubtask))) &&
+    (task.favorite === undefined || typeof task.favorite === 'boolean')
   )
 }
 
@@ -61,5 +62,6 @@ export function normalizeTask(task: Task): Task {
     ...task,
     notes: task.notes ?? '',
     subtasks: (task.subtasks ?? []).map((subtask) => ({ ...subtask })),
+    favorite: task.favorite ?? false,
   }
 }

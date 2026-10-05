@@ -14,6 +14,7 @@ const validTask: Task = {
   createdAt: 1_790_856_000_000,
   notes: '',
   subtasks: [],
+  favorite: false,
 }
 
 const legacyTask = {
@@ -50,7 +51,7 @@ describe('taskStorage', () => {
     localStorage.setItem(storageKey, legacyJson)
 
     expect(readTasksWithStatus()).toEqual({
-      tasks: [{ ...legacyTask, notes: '', subtasks: [] }],
+      tasks: [{ ...legacyTask, notes: '', subtasks: [], favorite: false }],
       failed: false,
     })
     expect(localStorage.getItem(storageKey)).toBe(legacyJson)
@@ -74,6 +75,7 @@ describe('taskStorage', () => {
     ['invalid createdAt type', { ...validTask, createdAt: '1' }],
     ['invalid notes type', { ...validTask, notes: 2 }],
     ['invalid checklist item', { ...validTask, subtasks: [{ id: 'sub-1', title: 'Check', completed: 'false' }] }],
+    ['invalid favorite type', { ...validTask, favorite: 'true' }],
   ])('rejects records with %s', (_description, invalidTask) => {
     localStorage.setItem(storageKey, JSON.stringify([invalidTask]))
 

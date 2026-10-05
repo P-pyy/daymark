@@ -58,7 +58,7 @@ describe('task synchronization helpers', () => {
       payload,
       updated_at: 600,
       is_deleted: false,
-    })).toEqual({ ...task, updatedAt: 600, notes: '', subtasks: [] })
+    })).toEqual({ ...task, updatedAt: 600, notes: '', subtasks: [], favorite: false })
   })
 
   it('clears account task cache and tombstones without clearing preferences', () => {

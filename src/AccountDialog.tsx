@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { SignOut, X } from '@phosphor-icons/react'
 import type { User } from '@supabase/supabase-js'
+import { useLocale } from './locale'
 
 export type AccountSyncState = 'idle' | 'syncing' | 'synced' | 'offline' | 'error'
 
@@ -29,6 +30,7 @@ export function AccountDialog({
   onRetryLoginNotice,
   onClose,
 }: AccountDialogProps) {
+  const { translate: t } = useLocale()
   const dialogRef = useRef<HTMLElement>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -77,7 +79,7 @@ export function AccountDialog({
     try {
       await action()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'The account request failed. Please try again.')
+      setActionError(error instanceof Error ? error.message : t('The account request failed. Please try again.'))
     } finally {
       setBusy(false)
     }
@@ -88,17 +90,17 @@ export function AccountDialog({
       <section ref={dialogRef} className="composer-sheet settings-sheet account-sheet" role="dialog" aria-modal="true" aria-labelledby="account-heading">
         <div className="composer-title-row">
           <div className="composer-heading-group">
-            <h2 className="composer-heading" id="account-heading">Profile</h2>
+            <h2 className="composer-heading" id="account-heading">{t('Profile')}</h2>
           </div>
-          <button className="composer-close" type="button" aria-label="Close profile" onClick={onClose}>
+          <button className="composer-close" type="button" aria-label={t('Close profile')} onClick={onClose}>
             <X size={16} aria-hidden="true" />
           </button>
         </div>
 
         {!configured ? (
           <div className="account-message" role="status">
-            <h3>Profile setup is needed</h3>
-            <p>Daymark needs a Supabase project and Google sign-in configuration before you can connect an account.</p>
+            <h3>{t('Profile setup is needed')}</h3>
+            <p>{t('Daymark needs a Supabase project and Google sign-in configuration before you can connect an account.')}</p>
           </div>
         ) : user ? (
           <div className="account-content">
@@ -108,34 +110,34 @@ export function AccountDialog({
                 : <span className="account-avatar account-avatar-fallback" aria-hidden="true">{profileName.slice(0, 1).toUpperCase()}</span>}
               <div>
                 <strong>{profileName}</strong>
-                <span>{user.email ?? 'Google account'}</span>
+                <span>{user.email ?? t('Google account')}</span>
               </div>
             </div>
 
             <div className="account-sync-state" role="status" aria-live="polite">
               <strong>{syncState === 'syncing'
-                ? 'Syncing your tasks'
+                ? t('Syncing your tasks')
                 : syncState === 'synced'
-                  ? 'Tasks are up to date'
+                  ? t('Tasks are up to date')
                   : syncState === 'offline'
-                    ? 'You are offline'
+                    ? t('You are offline')
                     : syncState === 'error'
-                      ? 'Sync needs attention'
-                      : 'Preparing task sync'}</strong>
+                      ? t('Sync needs attention')
+                      : t('Preparing task sync')}</strong>
               <p>{syncState === 'synced'
-                ? 'Tasks are available across your signed-in devices.'
+                ? t('Tasks are available across your signed-in devices.')
                 : syncState === 'offline'
-                  ? 'Your changes are saved on this device and will sync when you reconnect.'
-                  : syncError ?? 'Daymark is checking for account changes.'}</p>
+                  ? t('Your changes are saved on this device and will sync when you reconnect.')
+                  : syncError ?? t('Daymark is checking for account changes.')}</p>
               {(syncState === 'error' || syncState === 'offline') && (
-                <button className="account-text-button" type="button" onClick={onRetrySync}>Try sync again</button>
+                <button className="account-text-button" type="button" onClick={onRetrySync}>{t('Try sync again')}</button>
               )}
             </div>
 
             {loginNoticeError && (
               <div className="account-message" role="alert">
-                <p>You are signed in, but the sign-in email could not be sent.</p>
-                <button className="account-text-button" type="button" onClick={onRetryLoginNotice}>Try sending again</button>
+                <p>{t('You are signed in, but the sign-in email could not be sent.')}</p>
+                <button className="account-text-button" type="button" onClick={onRetryLoginNotice}>{t('Try sending again')}</button>
               </div>
             )}
 
@@ -147,19 +149,19 @@ export function AccountDialog({
               onClick={() => { void runAction(onSignOut) }}
             >
               <SignOut size={18} aria-hidden="true" />
-              <span>{syncState === 'synced' ? 'Sign out' : 'Sync before signing out'}</span>
+              <span>{syncState === 'synced' ? t('Sign out') : t('Sync before signing out')}</span>
             </button>
-            {!canSignOut && <p className="account-signout-note">Sign out is available after all changes have synced.</p>}
+            {!canSignOut && <p className="account-signout-note">{t('Sign out is available after all changes have synced.')}</p>}
           </div>
         ) : (
           <div className="account-content">
             <div className="account-message">
-              <h3>Connect your Google account</h3>
-              <p>Sign in to sync your tasks across devices. Daymark uses your account name, email, and profile photo only. It cannot read your Gmail inbox.</p>
+              <h3>{t('Connect your Google account')}</h3>
+              <p>{t('Sign in to sync your tasks across devices. Daymark uses your account name, email, and profile photo only. It cannot read your Gmail inbox.')}</p>
             </div>
             <button className="account-google-button" type="button" disabled={busy} onClick={() => { void runAction(onSignIn) }}>
               <span className="google-mark" aria-hidden="true">G</span>
-              <span>{busy ? 'Connecting…' : 'Continue with Google'}</span>
+              <span>{busy ? t('Connecting…') : t('Continue with Google')}</span>
             </button>
           </div>
         )}

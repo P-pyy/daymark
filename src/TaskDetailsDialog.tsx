@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Check, Plus, Trash, X } from '@phosphor-icons/react'
 import { categories, MAX_SUBTASK_TITLE_LENGTH, MAX_TASK_NOTES_LENGTH, type Category, type Priority, type Subtask, type Task } from './taskTypes'
+import { useLocale } from './locale'
 
 interface TaskDetailsDialogProps {
   task: Task
@@ -9,6 +10,7 @@ interface TaskDetailsDialogProps {
 }
 
 export function TaskDetailsDialog({ task, onSave, onClose }: TaskDetailsDialogProps) {
+  const { translate: t } = useLocale()
   const dialogRef = useRef<HTMLElement>(null)
   const [title, setTitle] = useState(task.title)
   const [category, setCategory] = useState<Category>(task.category)
@@ -94,50 +96,50 @@ export function TaskDetailsDialog({ task, onSave, onClose }: TaskDetailsDialogPr
         <form className="task-details-form" onSubmit={saveDetails}>
           <div className="composer-title-row">
             <div className="composer-heading-group">
-              <h2 className="composer-heading" id="task-details-heading">Task details</h2>
+              <h2 className="composer-heading" id="task-details-heading">{t('Task details')}</h2>
               <span className="composer-badge">{task.title}</span>
             </div>
-            <button className="composer-close" type="button" aria-label="Close task details" onClick={onClose}>
+            <button className="composer-close" type="button" aria-label={t('Close task details')} onClick={onClose}>
               <X size={16} aria-hidden="true" />
             </button>
           </div>
 
           <label className="details-field">
-            <span>Task name</span>
+            <span>{t('Task name')}</span>
             <input autoFocus type="text" maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} required />
           </label>
 
           <div className="details-options">
             <label className="details-field">
-              <span>Category</span>
+              <span>{t('Category')}</span>
               <select value={category} onChange={(event) => setCategory(event.target.value as Category)}>
-                {categories.map((option) => <option key={option} value={option}>{option}</option>)}
+                {categories.map((option) => <option key={option} value={option}>{t(option)}</option>)}
               </select>
             </label>
             <label className="details-field">
-              <span>Priority</span>
+              <span>{t('Priority')}</span>
               <select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}>
-                <option value="Low">Low</option>
-                <option value="Normal">Normal</option>
-                <option value="High">High</option>
+                <option value="Low">{t('Low')}</option>
+                <option value="Normal">{t('Normal')}</option>
+                <option value="High">{t('High')}</option>
               </select>
             </label>
             <label className="details-field details-date-field">
-              <span>Due date</span>
+              <span>{t('Due date')}</span>
               <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
             </label>
           </div>
 
           <label className="details-field notes-field">
-            <span>Notes <small>(optional, {MAX_TASK_NOTES_LENGTH} characters max)</small></span>
+            <span>{t('Notes')} <small>({t('optional')}, {MAX_TASK_NOTES_LENGTH} {t('characters max')})</small></span>
             <textarea maxLength={MAX_TASK_NOTES_LENGTH} value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} />
           </label>
 
           <section className="task-checklist" aria-labelledby="task-checklist-heading">
             <div className="task-checklist-heading">
-              <h3 id="task-checklist-heading">Checklist</h3>
+              <h3 id="task-checklist-heading">{t('Checklist')}</h3>
               {subtasks.length > 0 && (
-                <span role="status" aria-live="polite">{completedSubtasks} of {subtasks.length} completed</span>
+                <span role="status" aria-live="polite">{completedSubtasks} {t('of')} {subtasks.length} {t('completed')}</span>
               )}
             </div>
             {subtasks.length > 0 ? (
@@ -147,13 +149,13 @@ export function TaskDetailsDialog({ task, onSave, onClose }: TaskDetailsDialogPr
                     <button
                       className="task-subtask-check"
                       type="button"
-                      aria-label={`${subtask.completed ? 'Restore' : 'Complete'} checklist item “${subtask.title}”`}
+                      aria-label={`${t(subtask.completed ? 'Restore' : 'Complete')} ${t('checklist item')} “${subtask.title}”`}
                       aria-pressed={subtask.completed}
                       onClick={() => setSubtasks((current) => current.map((item) => item.id === subtask.id ? { ...item, completed: !item.completed } : item))}
                     >
                       {subtask.completed && <Check size={14} weight="bold" aria-hidden="true" />}
                     </button>
-                    <label className="sr-only" htmlFor={`subtask-title-${task.id}-${subtask.id}`}>Checklist item {index + 1}</label>
+                    <label className="sr-only" htmlFor={`subtask-title-${task.id}-${subtask.id}`}>{t('Checklist item')} {index + 1}</label>
                     <input
                       id={`subtask-title-${task.id}-${subtask.id}`}
                       className="task-subtask-title"
@@ -166,8 +168,8 @@ export function TaskDetailsDialog({ task, onSave, onClose }: TaskDetailsDialogPr
                     <button
                       className="icon-button delete-button task-subtask-delete"
                       type="button"
-                      aria-label={`Delete checklist item “${subtask.title}”`}
-                      title="Delete checklist item"
+                      aria-label={`${t('Delete checklist item')} “${subtask.title}”`}
+                      title={t('Delete checklist item')}
                       onClick={() => setSubtasks((current) => current.filter((item) => item.id !== subtask.id))}
                     >
                       <Trash size={16} aria-hidden="true" />
@@ -176,11 +178,11 @@ export function TaskDetailsDialog({ task, onSave, onClose }: TaskDetailsDialogPr
                 ))}
               </ul>
             ) : (
-              <p className="task-checklist-empty">No checklist items yet.</p>
+              <p className="task-checklist-empty">{t('No checklist items yet.')}</p>
             )}
 
             <div className="task-subtask-add">
-              <label className="sr-only" htmlFor={`new-subtask-${task.id}`}>New checklist item</label>
+              <label className="sr-only" htmlFor={`new-subtask-${task.id}`}>{t('New checklist item')}</label>
               <input
                 id={`new-subtask-${task.id}`}
                 type="text"
@@ -188,18 +190,18 @@ export function TaskDetailsDialog({ task, onSave, onClose }: TaskDetailsDialogPr
                 value={newSubtaskTitle}
                 onChange={(event) => setNewSubtaskTitle(event.target.value)}
                 onKeyDown={handleNewSubtaskKeydown}
-                placeholder="Add a checklist item"
+                placeholder={t('Add a checklist item')}
               />
               <button className="subtask-add-button" type="button" disabled={!newSubtaskTitle.trim()} onClick={addSubtask}>
-                <Plus size={17} aria-hidden="true" />Add item
+                <Plus size={17} aria-hidden="true" />{t('Add item')}
               </button>
             </div>
           </section>
 
           <div className="composer-footer">
-            <button className="composer-cancel" type="button" onClick={onClose}>Cancel</button>
-            <button className="add-task-button" type="submit" aria-label="Save task details">
-              <span>Save changes</span><Check size={18} weight="bold" aria-hidden="true" />
+            <button className="composer-cancel" type="button" onClick={onClose}>{t('Cancel')}</button>
+            <button className="add-task-button" type="submit" aria-label={t('Save task details')}>
+              <span>{t('Save changes')}</span><Check size={18} weight="bold" aria-hidden="true" />
             </button>
           </div>
         </form>

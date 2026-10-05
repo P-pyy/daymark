@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
-  ArrowRight,
   ArrowCounterClockwise,
   BookOpen,
+  Bell,
   Briefcase,
+  CalendarBlank,
   CheckCircle,
-  GearSix,
+  Heart,
   HouseLine,
   ListChecks,
   MagnifyingGlass,
@@ -16,25 +17,34 @@ import {
   User,
   X,
 } from '@phosphor-icons/react'
+import { Bell as ProfileBell, CalendarDays as ProfileCalendar, Heart as ProfileHeart, User as ProfileUser } from 'lucide-react'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import { AccountDialog, type AccountSyncState } from './AccountDialog'
 import { TaskComposerDialog } from './TaskComposerDialog'
 import { TaskDetailsDialog } from './TaskDetailsDialog'
 import { TaskItem } from './TaskItem'
-import { SettingsDialog, type ThemePreference } from './SettingsDialog'
+import { ProfileScreen, type ThemePreference } from './ProfileScreen'
+import { CalendarScreen } from './CalendarScreen'
+import { NotificationsScreen } from './NotificationsScreen'
+import { NotificationSettingsScreen } from './NotificationSettingsScreen'
+import { LocaleProvider, useLocale } from './locale'
 import { readTasksWithStatus, writeTasks } from './taskStorage'
 import { addTaskTombstones, clearLocalAccountTasks, mergeTaskLists, readTaskTombstones, removeTaskTombstone, synchronizeTaskSet, taskFromRecord, writeTaskTombstones } from './taskSync'
 import { supabase } from './supabaseClient'
 import { categories, type Category, type Priority, type Task } from './taskTypes'
 import { getLocalDateKey, isTaskDueToday, sortTasks, type TaskSortOrder } from './taskUtils'
+import { shiftCalendarMonth } from './calendarUtils'
+import { createDueNotifications, readDueNotifications, writeDueNotifications, type DueNotification } from './dueNotifications'
+import { readBrowserAlertsPreference, writeBrowserAlertsPreference } from './notificationPreferences'
 import heroIllustration from './assets/daymark-welcome-illustration.png'
 import './TodoReference.css'
 
 type TaskFilter = 'All' | 'Active' | 'Completed'
 type CategoryFilter = Category | 'All' | 'Today'
 type ResolvedTheme = 'light' | 'dark'
-type AppScreen = 'welcome' | 'categories' | 'tasks'
+type AppScreen = 'welcome' | 'categories' | 'tasks' | 'calendar' | 'notifications' | 'notification-settings' | 'profile'
 type TaskStorageIssue = 'load' | 'save'
+type AppNavigation = 'today' | 'categories' | 'calendar' | 'search' | 'notifications' | 'profile'
 
 const splashStorageKey = 'daymark.splash.seen.v1'
 const themeStorageKey = 'daymark.theme.preference.v1'
@@ -118,14 +128,15 @@ interface ThemeToggleProps {
 }
 
 function ThemeToggle({ theme, onToggle, className = 'screen-icon-button theme-toggle' }: ThemeToggleProps) {
+  const { translate: t } = useLocale()
   const nextTheme = theme === 'dark' ? 'light' : 'dark'
 
   return (
     <button
       className={className}
       type="button"
-      aria-label={`Switch to ${nextTheme} theme`}
-      title={`Switch to ${nextTheme} theme`}
+      aria-label={`${t('Switch to')} ${t(nextTheme === 'light' ? 'Light' : 'Dark')} ${t('theme')}`}
+      title={`${t('Switch to')} ${t(nextTheme === 'light' ? 'Light' : 'Dark')} ${t('theme')}`}
       aria-pressed={theme === 'dark'}
       onClick={onToggle}
     >
@@ -134,15 +145,59 @@ function ThemeToggle({ theme, onToggle, className = 'screen-icon-button theme-to
   )
 }
 
-function App() {
+function ReminderShortcut({ unreadCount, onClick }: { unreadCount: number; onClick: () => void }) {
+  const { translate: t } = useLocale()
+  return (
+    <button
+      className="screen-icon-button notification-shortcut"
+      type="button"
+      aria-label={`${t('Notifications')}${unreadCount ? `, ${unreadCount} ${t('unread')}` : ''}`}
+      onClick={onClick}
+    >
+      <Bell size={20} aria-hidden="true" />
+      {unreadCount > 0 && <span className="notification-badge" aria-hidden="true">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+    </button>
+  )
+}
+
+function AppContent() {
+  const { language, translate: t } = useLocale()
   const [storedTaskState] = useState(readTasksWithStatus)
+  const [storedNotificationState] = useState(() => {
+    const stored = readDueNotifications()
+    if (stored.failed || storedTaskState.failed) return stored
+
+    const now = new Date()
+    const notifications = createDueNotifications(storedTaskState.tasks, stored.notifications, getLocalDateKey(now), now.getTime())
+    if (notifications.length === stored.notifications.length) return stored
+    return writeDueNotifications(notifications)
+      ? { notifications, failed: false }
+      : { notifications: stored.notifications, failed: true }
+  })
   const [showSplash, setShowSplash] = useState(shouldShowSplash)
   const [splashLeaving, setSplashLeaving] = useState(false)
   const [screen, setScreen] = useState<AppScreen>(() => readInitialScreen(storedTaskState.tasks.length > 0))
-  const [activeNavigation, setActiveNavigation] = useState<'today' | 'categories' | 'search'>(screen === 'tasks' ? 'categories' : 'today')
+  const [activeNavigation, setActiveNavigation] = useState<AppNavigation>(screen === 'tasks' ? 'categories' : 'today')
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference)
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(getSystemTheme)
   const [tasks, setTasks] = useState<Task[]>(storedTaskState.tasks)
+  const [dueNotifications, setDueNotifications] = useState<DueNotification[]>(storedNotificationState.notifications)
+  const [notificationStorageError, setNotificationStorageError] = useState<string | null>(
+    storedNotificationState.failed ? 'Saved reminders could not be read safely. The saved notification history was left unchanged.' : null,
+  )
+  const [browserNotificationError, setBrowserNotificationError] = useState<string | null>(null)
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() =>
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  )
+  const [browserAlertsPreference, setBrowserAlertsPreference] = useState(() =>
+    readBrowserAlertsPreference(typeof Notification !== 'undefined' && Notification.permission === 'granted'),
+  )
+  const [favoriteOnly, setFavoriteOnly] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const date = new Date()
+    return new Date(date.getFullYear(), date.getMonth(), 1)
+  })
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => getLocalDateKey(new Date()))
   const tasksRef = useRef(tasks)
   const [taskStorageIssue, setTaskStorageIssue] = useState<TaskStorageIssue | null>(storedTaskState.failed ? 'load' : null)
   const [filter, setFilter] = useState<TaskFilter>('All')
@@ -150,7 +205,6 @@ function App() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(readCategoryFilter)
   const [query, setQuery] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const [accountUser, setAccountUser] = useState<SupabaseUser | null>(null)
   const [authReady, setAuthReady] = useState(!supabase)
@@ -159,7 +213,6 @@ function App() {
   const [loginNoticeError, setLoginNoticeError] = useState<string | null>(null)
   const [detailsTaskId, setDetailsTaskId] = useState<string | null>(null)
   const composerTriggerRef = useRef<HTMLElement | null>(null)
-  const settingsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const accountTriggerRef = useRef<HTMLButtonElement | null>(null)
   const manualSignOutRef = useRef(false)
   const syncStateRef = useRef(syncState)
@@ -175,11 +228,108 @@ function App() {
   const [clearConfirmation, setClearConfirmation] = useState(false)
   const [announcement, setAnnouncement] = useState('')
   const theme = themePreference === 'system' ? systemTheme : themePreference
-  const modalOpen = composerOpen || settingsOpen || accountOpen || detailsTaskId !== null
+  const intlLocale = language === 'fil' ? 'fil-PH' : 'en'
+  const modalOpen = composerOpen || accountOpen || detailsTaskId !== null
 
   function toggleTheme() {
     setThemePreference(theme === 'dark' ? 'light' : 'dark')
   }
+
+  const saveDueNotificationChanges = useCallback((nextNotifications: DueNotification[]) => {
+    if (notificationStorageError) return false
+    if (!writeDueNotifications(nextNotifications)) {
+      setNotificationStorageError(t('Reminders could not be saved. Check browser storage before changing notification history.'))
+      return false
+    }
+    setDueNotifications(nextNotifications)
+    return true
+  }, [notificationStorageError, t])
+
+  const showBrowserReminders = useCallback((notifications: DueNotification[], justEnabled = false) => {
+    if ((!browserAlertsPreference.enabled && !justEnabled) || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const today = getLocalDateKey(new Date())
+    const nextNotifications = [...notifications]
+    let changed = false
+
+    for (const [index, reminder] of nextNotifications.entries()) {
+      if (reminder.dueDate !== today || reminder.browserNotified) continue
+      try {
+        new Notification(t('A task is due today'), {
+          body: reminder.taskTitle,
+          icon: '/daymark-icon-192.png',
+          tag: reminder.id,
+        })
+        nextNotifications[index] = { ...reminder, browserNotified: true }
+        changed = true
+      } catch (error) {
+        setBrowserNotificationError(error instanceof Error
+          ? `${t('Browser notification could not be shown')}: ${error.message}`
+          : t('Browser notification could not be shown.'))
+        break
+      }
+    }
+
+    if (changed) saveDueNotificationChanges(nextNotifications)
+  }, [browserAlertsPreference.enabled, saveDueNotificationChanges, t])
+
+  async function requestBrowserNotifications() {
+    setBrowserNotificationError(null)
+    if (typeof Notification === 'undefined') {
+      setBrowserNotificationPermission('unsupported')
+      setBrowserNotificationError(t('This browser does not support desktop notifications. In-app reminders are still available.'))
+      return 'unsupported' as const
+    }
+
+    try {
+      const permission = await Notification.requestPermission()
+      setBrowserNotificationPermission(permission)
+      if (permission === 'granted') {
+        const saved = writeBrowserAlertsPreference(true)
+        if (!saved) {
+          setBrowserAlertsPreference((current) => ({ ...current, failed: true }))
+          setBrowserNotificationError(t('Browser notification preferences could not be saved on this device.'))
+          return permission
+        }
+        setBrowserAlertsPreference({ enabled: true, failed: false })
+        showBrowserReminders(dueNotifications, true)
+      }
+      else if (permission === 'denied') setBrowserNotificationError(t('Notifications are blocked in your browser settings. You can still use the in-app reminder list.'))
+      return permission
+    } catch (error) {
+      setBrowserNotificationError(error instanceof Error
+        ? `${t('Notification permission could not be requested')}: ${error.message}`
+        : t('Notification permission could not be requested.'))
+      return typeof Notification === 'undefined' ? 'unsupported' as const : Notification.permission
+    }
+  }
+
+  async function saveBrowserAlertPreference(enabled: boolean) {
+    if (browserAlertsPreference.failed) {
+      setBrowserNotificationError(t('Browser notification preferences could not be read safely. Reload Daymark before changing them.'))
+      return false
+    }
+    if (enabled && browserNotificationPermission === 'default') {
+      const permission = await requestBrowserNotifications()
+      if (permission !== 'granted') return false
+    }
+    if (enabled && browserNotificationPermission === 'denied') {
+      setBrowserNotificationError(t('Notifications are blocked in your browser settings. You can still use the in-app reminder list.'))
+      return false
+    }
+    if (!writeBrowserAlertsPreference(enabled)) {
+      setBrowserAlertsPreference((current) => ({ ...current, failed: true }))
+      setBrowserNotificationError(t('Browser notification preferences could not be saved on this device.'))
+      return false
+    }
+    setBrowserAlertsPreference({ enabled, failed: false })
+    setBrowserNotificationError(null)
+    return true
+  }
+
+  useEffect(() => {
+    const reminderTimer = window.setTimeout(() => showBrowserReminders(dueNotifications), 0)
+    return () => window.clearTimeout(reminderTimer)
+  }, [dueNotifications, showBrowserReminders])
 
   function saveTasks(nextTasks: Task[]) {
     tasksRef.current = nextTasks
@@ -234,6 +384,15 @@ function App() {
     }
   }
 
+  async function updateAccountProfileName(name: string) {
+    if (!supabase || !accountUser) throw new Error('Connect your Google account before syncing profile changes.')
+    const { data, error } = await supabase.auth.updateUser({
+      data: { daymark_display_name: name },
+    })
+    if (error) throw error
+    setAccountUser(data.user)
+  }
+
   const sendLoginNotice = useCallback(async (session: Session) => {
     if (!supabase || sentLoginNoticeTokens.current.has(session.access_token)) return
     sentLoginNoticeTokens.current.add(session.access_token)
@@ -260,7 +419,6 @@ function App() {
 
   function openAccount(trigger?: HTMLButtonElement) {
     accountTriggerRef.current = trigger ?? null
-    setSettingsOpen(false)
     setAccountOpen(true)
   }
 
@@ -326,12 +484,6 @@ function App() {
       detailsTriggerRef.current = null
     }
   }, [detailsTaskId])
-
-  useEffect(() => {
-    if (settingsOpen) return
-    settingsTriggerRef.current?.focus()
-    settingsTriggerRef.current = null
-  }, [settingsOpen])
 
   useEffect(() => {
     if (accountOpen) return
@@ -566,8 +718,8 @@ function App() {
   const todayTasks = tasks.filter((task) => isTaskDueToday(task, now))
   const todayActiveCount = todayTasks.filter((task) => !task.completed).length
   const todayCompletedCount = todayTasks.filter((task) => task.completed).length
-  const matchesCategory = (task: Task) => categoryFilter === 'All'
-    || (categoryFilter === 'Today' ? isTaskDueToday(task, now) : task.category === categoryFilter)
+  const matchesCategory = (task: Task) => (!favoriteOnly || Boolean(task.favorite)) && (categoryFilter === 'All'
+    || (categoryFilter === 'Today' ? isTaskDueToday(task, now) : task.category === categoryFilter))
   const scopedCompletedCount = tasks.filter(
     (task) => task.completed && matchesCategory(task),
   ).length
@@ -582,12 +734,13 @@ function App() {
     return matchesStatus && matchesCategory(task) && matchesSearch
   })
   const visibleTasks = sortTasks(filteredTasks, sortOrder)
-  const heading = categoryFilter === 'All' ? 'All tasks' : categoryFilter
+  const heading = favoriteOnly ? t('Favorites') : categoryFilter === 'All' ? t('All tasks') : t(categoryFilter)
   const detailsTask = detailsTaskId === null ? null : tasks.find((task) => task.id === detailsTaskId) ?? null
   const activeVisibleTasks = visibleTasks.filter((task) => !task.completed)
   const completedVisibleTasks = visibleTasks.filter((task) => task.completed)
   const completionPercentage = todayTasks.length === 0 ? 0 : Math.round((todayCompletedCount / todayTasks.length) * 100)
-  const dateLabel = new Intl.DateTimeFormat(undefined, {
+  const unreadNotificationCount = dueNotifications.filter((notification) => !notification.read).length
+  const dateLabel = new Intl.DateTimeFormat(intlLocale, {
     weekday: 'long', month: 'long', day: 'numeric',
   }).format(now)
 
@@ -608,6 +761,7 @@ function App() {
   }
 
   function openTodayDashboard() {
+    setFavoriteOnly(false)
     setCategoryFilter('Today')
     setFilter('All')
     setQuery('')
@@ -621,6 +775,7 @@ function App() {
   }
 
   function selectCategory(category: CategoryFilter) {
+    setFavoriteOnly(false)
     setCategoryFilter(category)
     setFilter('All')
     setQuery('')
@@ -633,11 +788,60 @@ function App() {
     }
   }
 
+  function openCalendar() {
+    setScreen('calendar')
+    setActiveNavigation('calendar')
+    setSelectedCalendarDate(todayDateKey)
+  }
+
+  function openFavorites() {
+    setFavoriteOnly(true)
+    setCategoryFilter('All')
+    setFilter('All')
+    setQuery('')
+    setScreen('tasks')
+    setActiveNavigation('categories')
+  }
+
+  function openNotifications() {
+    setActiveNavigation('notifications')
+    setScreen('notifications')
+  }
+
+  function openNotificationSettings() {
+    setActiveNavigation('notifications')
+    setScreen('notification-settings')
+  }
+
+  function openProfile() {
+    setScreen('profile')
+    setActiveNavigation('profile')
+  }
+
+  function openNotificationTask(notification: DueNotification, trigger: HTMLButtonElement) {
+    const nextNotifications = dueNotifications.map((item) => item.id === notification.id ? { ...item, read: true } : item)
+    if (!saveDueNotificationChanges(nextNotifications)) return
+    const task = tasks.find((item) => item.id === notification.taskId)
+    if (!task) {
+      setAnnouncement(t('This task is no longer in your list.'))
+      return
+    }
+    openTaskDetails(task, trigger)
+  }
+
   function updateTask(updatedTask: Task) {
     saveTasks(tasks.map((task) => task.id === updatedTask.id
       ? { ...updatedTask, updatedAt: Math.max(getCurrentTimestamp(), (task.updatedAt ?? task.createdAt) + 1) }
       : task))
-    setAnnouncement(`Updated ${updatedTask.title}`)
+    setAnnouncement(`${t('Updated')} ${updatedTask.title}`)
+  }
+
+  function toggleFavorite(task: Task) {
+    const favorite = !task.favorite
+    saveTasks(tasks.map((item) => item.id === task.id
+      ? { ...item, favorite, updatedAt: Math.max(getCurrentTimestamp(), (item.updatedAt ?? item.createdAt) + 1) }
+      : item))
+    setAnnouncement(`${t(favorite ? 'Added to' : 'Removed from')} ${t('favorites')}: ${task.title}`)
   }
 
   function openTaskDetails(task: Task, trigger: HTMLButtonElement) {
@@ -655,7 +859,7 @@ function App() {
     saveTasks(tasks.map((item) => item.id === task.id
       ? { ...item, completed, updatedAt: Math.max(getCurrentTimestamp(), (item.updatedAt ?? item.createdAt) + 1) }
       : item))
-    setAnnouncement(`${completed ? 'Completed' : 'Restored'} ${task.title}`)
+    setAnnouncement(`${t(completed ? 'Completed' : 'Restored')} ${task.title}`)
   }
 
   function deleteTask(task: Task) {
@@ -671,7 +875,7 @@ function App() {
     }
     saveTasks(tasks.filter((item) => item.id !== task.id))
     setUndoTask({ task, index })
-    setAnnouncement(`Deleted ${task.title}. Undo is available.`)
+    setAnnouncement(`${t('Deleted')} ${task.title}. ${t('Undo is available.')}`)
     setClearConfirmation(false)
   }
 
@@ -691,7 +895,7 @@ function App() {
       ? { ...undoTask.task, updatedAt: Math.max(getCurrentTimestamp(), (undoTask.task.updatedAt ?? undoTask.task.createdAt) + 1) }
       : undoTask.task)
     saveTasks(restoredTasks)
-    setAnnouncement(`Restored ${undoTask.task.title}`)
+    setAnnouncement(`${t('Restored')} ${undoTask.task.title}`)
     setUndoTask(null)
   }
 
@@ -711,116 +915,111 @@ function App() {
       }
     }
     saveTasks(tasks.filter((task) => !task.completed || !matchesCategory(task)))
-    setAnnouncement(`Removed ${scopedCompletedCount} completed tasks`)
+    setAnnouncement(`${t('Removed')} ${scopedCompletedCount} ${t('completed')} ${t('tasks')}`)
     setClearConfirmation(false)
     setUndoTask(null)
   }
 
   const emptyState = query.trim()
     ? {
-        title: 'No tasks match your search',
-        message: `Nothing matches “${query.trim()}”. Try a shorter search or clear it.`,
+        title: t('No tasks match your search'),
+        message: `${t('Nothing matches')} “${query.trim()}”. ${t('Try a shorter search or clear it.')}`,
       }
-    : categoryFilter === 'Today' && categoryTasks.length === 0
+    : favoriteOnly && categoryTasks.length === 0
       ? {
-          title: 'No tasks due today',
-          message: 'Tasks due on your local calendar date will appear here.',
+          title: t('No favorites yet'),
+          message: t('Tap the heart on a task to keep it close at hand.'),
+        }
+      : categoryFilter === 'Today' && categoryTasks.length === 0
+      ? {
+          title: t('No tasks due today'),
+          message: t('Tasks due on your local calendar date will appear here.'),
         }
       : categoryFilter !== 'All' && categoryTasks.length === 0
       ? {
-          title: `No tasks in ${categoryFilter}`,
-          message: `Add a ${categoryFilter.toLowerCase()} task, or choose another category.`,
+          title: `${t('No tasks in')} ${t(categoryFilter)}`,
+          message: `${t('Add a')} ${t(categoryFilter).toLowerCase()} ${t('task, or choose another category.')}`,
         }
       : filter === 'Completed'
         ? {
-            title: 'No completed tasks',
-            message: 'Check off a task and it will be collected here.',
+            title: t('No completed tasks'),
+            message: t('Check off a task and it will be collected here.'),
           }
         : filter === 'Active' && activeInCategoryCount === 0
           ? {
-              title: 'No active tasks',
+              title: t('No active tasks'),
               message: categoryTasks.length === 0
-                ? 'Add a task to give your day a starting point.'
-                : 'Your completed tasks are still here if you need to restore one.',
+                ? t('Add a task to give your day a starting point.')
+                : t('Your completed tasks are still here if you need to restore one.'),
             }
           : tasks.length === 0 && categoryFilter === 'All'
             ? {
-                title: 'No tasks yet',
-                message: 'Add one small thing to get started.',
+                title: t('No tasks yet'),
+                message: t('Add one small thing to get started.'),
               }
             : {
-                title: 'Nothing here just yet',
-                message: 'Choose another category or add a new task.',
+                title: t('Nothing here just yet'),
+                message: t('Choose another category or add a new task.'),
               }
   const canResetEmptyState = Boolean(query || categoryFilter !== 'All' || filter !== 'All')
 
   return (
-    <div className="app-shell reference-shell">
-      <a className="skip-link" href="#main-content" aria-hidden={showSplash || modalOpen} tabIndex={showSplash || modalOpen ? -1 : 0}>Skip to tasks</a>
+    <div className={`app-shell reference-shell${screen === 'profile' ? ' profile-open' : ''}${screen === 'notification-settings' ? ' notification-settings-open' : ''}${screen === 'categories' ? ' today-dashboard-open' : ''}`}>
+      <a className="skip-link" href="#main-content" aria-hidden={showSplash || modalOpen} tabIndex={showSplash || modalOpen ? -1 : 0}>{t('Skip to tasks')}</a>
       <main
         className={`app-stage flow-${screen}`}
         id="main-content"
-        aria-label={screen === 'welcome' ? 'Welcome to Daymark' : screen === 'categories' ? 'Choose a task category' : 'Daymark task planner'}
+        aria-label={screen === 'welcome' ? t('Welcome to Daymark')
+          : screen === 'categories' ? t('Choose a task category')
+            : screen === 'calendar' ? t('Daymark calendar')
+              : screen === 'notifications' ? t('Daymark reminders')
+                : screen === 'notification-settings' ? t('Notification settings')
+                : screen === 'profile' ? t('Your Daymark profile') : t('Daymark task planner')}
         aria-hidden={showSplash}
         inert={showSplash}
       >
         {taskStorageIssue && (
           <aside className="storage-notice" role="status" aria-live="polite" inert={modalOpen}>
             <p>{taskStorageIssue === 'load'
-              ? "Saved tasks couldn't be loaded. Check browser storage, then reload; changes may not persist."
-              : "Changes couldn't be saved. Your tasks remain in this tab; check browser storage and retry."}</p>
+              ? t("Saved tasks couldn't be loaded. Check browser storage, then reload; changes may not persist.")
+              : t("Changes couldn't be saved. Your tasks remain in this tab; check browser storage and retry.")}</p>
             <button type="button" onClick={retryTaskStorage}>
-              {taskStorageIssue === 'load' ? 'Reload' : 'Retry save'}
+              {taskStorageIssue === 'load' ? t('Reload') : t('Retry save')}
             </button>
           </aside>
         )}
-        <section className="device category-device" aria-label="Task categories" inert={modalOpen}>
+        <section className="device category-device" aria-label={t('Task categories')} inert={modalOpen || screen !== 'categories'}>
           <div className="device-screen category-screen">
-            <header className="category-screen-header">
-              <div className="screen-topline">
-                <span className="screen-date">{dateLabel}</span>
+            <header className="category-screen-header today-dashboard-header">
+              <div className="screen-topline today-dashboard-topline">
+                <span className="screen-date today-dashboard-date"><CalendarBlank size={14} aria-hidden="true" />{dateLabel}</span>
                 <div className="category-screen-actions">
                   <ThemeToggle theme={theme} onToggle={toggleTheme} />
-                  <button
-                    className="greeting-portrait"
-                    type="button"
-                    aria-label={accountUser ? 'Open profile' : 'Sign in with Google'}
-                    aria-haspopup="dialog"
-                    onClick={(event) => openAccount(event.currentTarget)}
-                  >
-                    {typeof (accountUser?.user_metadata.avatar_url ?? accountUser?.user_metadata.picture) === 'string'
-                      ? <img src={String(accountUser?.user_metadata.avatar_url ?? accountUser?.user_metadata.picture)} alt="" referrerPolicy="no-referrer" />
-                      : <User size={22} weight="fill" aria-hidden="true" />}
+                  <ReminderShortcut unreadCount={unreadNotificationCount} onClick={openNotifications} />
+                </div>
+              </div>
+              <div className="greeting-row today-dashboard-greeting">
+                <div className="today-dashboard-copy">
+                  <p className="screen-greeting">{t('A fresh start')}</p>
+                  <h2>{t('Today')}</h2>
+                  <p className="today-subtitle">{t('You have')} <strong>{todayActiveCount} {t(todayActiveCount === 1 ? 'task' : 'tasks')}</strong> {t('due today')}</p>
+                  <button className="today-tasks-link" type="button" onClick={() => selectCategory('Today')}>
+                    {t("View today's tasks")}
                   </button>
                 </div>
-              </div>
-              <div className="greeting-row">
-                <div>
-                  <p className="screen-greeting"><ArrowLeft size={16} weight="bold" aria-hidden="true" />A fresh start</p>
-                  <h2>Today</h2>
-                  <p className="today-subtitle">You have <strong>{todayActiveCount} {todayActiveCount === 1 ? 'task' : 'tasks'}</strong> due today</p>
-                </div>
+                <img className="today-dashboard-illustration" src="/daymark-today-sun.svg" alt="" aria-hidden="true" />
               </div>
               <button className="quick-intake" type="button" onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}>
-                <span className="quick-intake-copy"><Plus size={20} aria-hidden="true" />Plan a new thought or task...</span>
-                <span className="quick-intake-submit" aria-hidden="true"><ArrowRight size={19} weight="bold" /></span>
+                <span className="quick-intake-copy">
+                  <span className="quick-intake-plus"><Plus size={19} aria-hidden="true" /></span>
+                  <span>{t('Plan a new thought or task...')}</span>
+                </span>
               </button>
             </header>
             <div className="dashboard-category-heading">
-              <div><h2>Categories</h2><span>5 lists</span></div>
-              <button type="button" onClick={() => selectCategory('All')}>Manage <span aria-hidden="true">›</span></button>
+              <div><h2>{t('Categories')}</h2><span>{t('4 categories')}</span></div>
             </div>
             <div className="category-cards">
-              <button
-                className={`category-card today-card ${categoryFilter === 'Today' ? 'is-current' : ''}`}
-                type="button"
-                aria-current={categoryFilter === 'Today' ? 'page' : undefined}
-                onClick={() => selectCategory('Today')}
-              >
-                <span className="category-card-icon today-icon"><Sun size={28} weight="duotone" aria-hidden="true" /></span>
-                <span className="category-card-copy"><strong>Today</strong><small>{todayActiveCount} {todayActiveCount === 1 ? 'task' : 'tasks'}</small></span>
-                <span className="category-card-count">{todayActiveCount}</span>
-              </button>
               {categories.map((category) => {
                 const Icon = categoryIcons[category]
                 const count = tasks.filter((task) => task.category === category && !task.completed).length
@@ -833,82 +1032,86 @@ function App() {
                     onClick={() => selectCategory(category)}
                   >
                     <span className={`category-card-icon icon-${category.toLowerCase()}`}><Icon size={25} weight="duotone" aria-hidden="true" /></span>
-                    <span className="category-card-copy"><strong>{category}</strong><small>{count} {count === 1 ? 'task' : 'tasks'}</small></span>
+                    <span className="category-card-copy"><strong>{t(category)}</strong><small>{count} {t(count === 1 ? 'task' : 'tasks')}</small></span>
                     <span className="category-card-count">{count}</span>
                   </button>
                 )
               })}
             </div>
-            <section className="dashboard-progress" aria-label="Daily progress">
+            <section className="dashboard-progress" aria-label={t('Daily progress')}>
               <div className="dashboard-progress-heading">
-                <h2><CheckCircle size={20} weight="duotone" aria-hidden="true" />Daily Progress</h2>
-                <span>{completionPercentage}% Done</span>
+                <h2><CheckCircle size={20} weight="duotone" aria-hidden="true" />{t('Daily Progress')}</h2>
+                <span>{completionPercentage}% {t('Done')}</span>
               </div>
               <div className="dashboard-progress-content">
                 <div className="dashboard-progress-ring" style={{ '--progress': `${completionPercentage}%` } as React.CSSProperties}>
                   <span>{todayCompletedCount}/{todayTasks.length}</span>
                 </div>
                 <div>
-                  <strong>{todayCompletedCount} of {todayTasks.length} tasks finished today</strong>
-                  <p>“Small steps every morning lead to quiet afternoons.”</p>
+                  <strong>{todayCompletedCount} / {todayTasks.length} {t('tasks finished today')}</strong>
+                  <p>{t('Small steps every morning lead to quiet afternoons.')}</p>
                 </div>
               </div>
             </section>
-            <button className="dashboard-fab" type="button" aria-label="Add a task" onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}><Plus size={26} weight="bold" aria-hidden="true" /></button>
           </div>
         </section>
 
-        <section className="device intro-device" aria-label="Daymark introduction" inert={modalOpen}>
+        <section className="device intro-device" aria-label={t('Daymark introduction')} inert={modalOpen || screen !== 'welcome'}>
           <div className="device-screen intro-screen">
             <ThemeToggle theme={theme} onToggle={toggleTheme} className="screen-icon-button theme-toggle intro-theme-toggle" />
             <div className="organize-art" aria-hidden="true">
               <span className="art-sun" />
               <img className="welcome-illustration" src={heroIllustration} alt="" />
               <span className="welcome-sun-badge"><Sun size={20} weight="fill" aria-hidden="true" /></span>
-              <span className="welcome-calm-badge"><CheckCircle size={17} weight="fill" aria-hidden="true" />100% Calm</span>
+              <span className="welcome-calm-badge"><CheckCircle size={17} weight="fill" aria-hidden="true" />{t('100% Calm')}</span>
             </div>
             <div className="intro-copy">
               <span className="intro-wordmark"><img src="/daymark-logo.svg" alt="Daymark" /></span>
-              <h1>Get organized, one thing at a time</h1>
-              <p>A simple, calm place for your daily plans, so you can make room for what matters.</p>
-              <div className="welcome-mode-selector" role="group" aria-label="Choose your welcome mode">
-                <button className={!guidedTour ? 'is-selected' : ''} type="button" aria-pressed={!guidedTour} onClick={() => setGuidedTour(false)}>Quick Start</button>
-                <button className={guidedTour ? 'is-selected' : ''} type="button" aria-pressed={guidedTour} onClick={() => setGuidedTour(true)}>Guided Tour</button>
+              <h1>{t('Get organized, one thing at a time')}</h1>
+              <p>{t('A simple, calm place for your daily plans, so you can make room for what matters.')}</p>
+              <div className="welcome-mode-selector" role="group" aria-label={t('Choose your welcome mode')}>
+                <button className={!guidedTour ? 'is-selected' : ''} type="button" aria-pressed={!guidedTour} onClick={() => setGuidedTour(false)}>{t('Quick Start')}</button>
+                <button className={guidedTour ? 'is-selected' : ''} type="button" aria-pressed={guidedTour} onClick={() => setGuidedTour(true)}>{t('Guided Tour')}</button>
               </div>
               <button className="get-started-button" type="button" onClick={openTodayDashboard}>
-                Get started<Plus size={16} weight="bold" aria-hidden="true" />
+                {t('Get started')}<Plus size={16} weight="bold" aria-hidden="true" />
               </button>
-              <div className="welcome-category-chips" aria-label="Example categories">
-                <span><Sun size={14} weight="fill" aria-hidden="true" />Today</span>
-                <span><User size={14} aria-hidden="true" />Personal</span>
-                <span><HouseLine size={14} aria-hidden="true" />Home</span>
+              <div className="welcome-category-chips" aria-label={t('Example categories')}>
+                <span><Sun size={14} weight="fill" aria-hidden="true" />{t('Today')}</span>
+                <span><User size={14} aria-hidden="true" />{t('Personal')}</span>
+                <span><HouseLine size={14} aria-hidden="true" />{t('Home')}</span>
               </div>
-              <p className="welcome-footnote">Free forever for personal focus <span aria-hidden="true">·</span> Tap to explore</p>
+              <p className="welcome-footnote">{t('Free forever for personal focus')} <span aria-hidden="true">·</span> {t('Tap to explore')}</p>
             </div>
           </div>
         </section>
 
-        <section className="device tasks-device" aria-label="Your task list" inert={modalOpen}>
+        <section className="device tasks-device" aria-label={favoriteOnly ? t('Favorite tasks') : t('Your task list')} inert={modalOpen || screen !== 'tasks'}>
           <div className="device-screen tasks-screen">
             <header className="tasks-screen-header">
               <div className="screen-action-row">
                 <button
                   className="screen-icon-button"
                   type="button"
-                  aria-label="Back to categories"
+                  aria-label={t('Back to categories')}
                   onClick={openTodayDashboard}
                 >
                   <ArrowLeft size={20} aria-hidden="true" />
                 </button>
                 <span className="screen-date">{dateLabel}</span>
-                <ThemeToggle theme={theme} onToggle={toggleTheme} />
+                <div className="category-screen-actions">
+                  <ThemeToggle theme={theme} onToggle={toggleTheme} />
+                  <ReminderShortcut unreadCount={unreadNotificationCount} onClick={openNotifications} />
+                </div>
               </div>
               <div className="tasks-screen-title-row">
                 <span className="task-title-avatar" aria-hidden="true"><User size={27} weight="fill" /></span>
                 <div className="tasks-screen-titles">
-                  <p>{categoryFilter === 'Today'
-                    ? `${activeInCategoryCount} active today`
-                    : `Category · ${activeInCategoryCount} ${activeInCategoryCount === 1 ? 'task' : 'tasks'} active`}</p>
+                  <p>{favoriteOnly
+                    ? `${tasks.filter((task) => task.favorite && !task.completed).length} ${t('saved favorites')}`
+                    : categoryFilter === 'Today'
+                    ? `${activeInCategoryCount} ${t('active today')}`
+                    : `${t('Category')} · ${activeInCategoryCount} ${t(activeInCategoryCount === 1 ? 'task' : 'tasks')} ${t('active')}`}</p>
                   <h1>{heading}</h1>
                 </div>
               </div>
@@ -916,7 +1119,7 @@ function App() {
 
             <div className="tasks-screen-body">
               <div className="task-controls">
-                <div className="filter-group" role="group" aria-label="Filter tasks">
+                <div className="filter-group" role="group" aria-label={t('Filter tasks')}>
                   {(['All', 'Active', 'Completed'] as const).map((option) => (
                     <button
                       className={`filter-button ${filter === option ? 'is-active' : ''}`}
@@ -925,39 +1128,48 @@ function App() {
                       aria-pressed={filter === option}
                       onClick={() => setFilter(option)}
                     >
-                      {option === 'Completed' ? 'Done' : option}
+                      {option === 'Completed' ? t('Done') : t(option)}
                       {option === 'Completed' && scopedCompletedCount > 0 && <span className="filter-count">{scopedCompletedCount}</span>}
                     </button>
                   ))}
+                  <button
+                    className={`filter-button favorites-filter ${favoriteOnly ? 'is-active' : ''}`}
+                    type="button"
+                    aria-pressed={favoriteOnly}
+                    onClick={() => setFavoriteOnly((current) => !current)}
+                  >
+                    <Heart size={15} weight={favoriteOnly ? 'fill' : 'regular'} aria-hidden="true" />
+                    {t('Favorites')}
+                  </button>
                 </div>
                 <label className="sort-field">
-                  <span>Sort</span>
-                  <select aria-label="Sort tasks" value={sortOrder} onChange={(event) => setSortOrder(event.target.value as TaskSortOrder)}>
-                    <option value="newest">Newest first</option>
-                    <option value="oldest">Oldest first</option>
-                    <option value="due-date">Due date</option>
-                    <option value="priority">Priority</option>
+                  <span>{t('Sort')}</span>
+                  <select aria-label={t('Sort tasks')} value={sortOrder} onChange={(event) => setSortOrder(event.target.value as TaskSortOrder)}>
+                    <option value="newest">{t('Newest first')}</option>
+                    <option value="oldest">{t('Oldest first')}</option>
+                    <option value="due-date">{t('Due date')}</option>
+                    <option value="priority">{t('Priority')}</option>
                   </select>
                 </label>
                 <label className="search-field">
                   <MagnifyingGlass size={16} aria-hidden="true" />
-                  <span className="sr-only">Search tasks</span>
-                  <input ref={taskSearchRef} type="search" name="task-search" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search tasks in ${heading}...`} />
-                  {query && <button className="search-clear" type="button" aria-label="Clear search" onClick={() => setQuery('')}><X size={14} aria-hidden="true" /></button>}
+                  <span className="sr-only">{t('Search tasks')}</span>
+                  <input ref={taskSearchRef} type="search" name="task-search" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`${t('Search tasks in')} ${heading}...`} />
+                  {query && <button className="search-clear" type="button" aria-label={t('Clear search')} onClick={() => setQuery('')}><X size={14} aria-hidden="true" /></button>}
                 </label>
               </div>
 
               <div className="task-list-heading">
-                <h2 id="task-list-heading">{filter === 'All' ? 'Your list' : `${filter} tasks`}<span>{visibleTasks.length}</span></h2>
-                {scopedCompletedCount > 0 && <button className="clear-completed" type="button" onClick={() => setClearConfirmation((showing) => !showing)}>Clear done</button>}
+                <h2 id="task-list-heading">{filter === 'All' ? t('Your list') : `${t(filter)} ${t('tasks')}`}<span>{visibleTasks.length}</span></h2>
+                {scopedCompletedCount > 0 && <button className="clear-completed" type="button" onClick={() => setClearConfirmation((showing) => !showing)}>{t('Clear done')}</button>}
               </div>
 
               {clearConfirmation && (
                 <div className="confirm-strip" role="alert">
-                  <span>Remove {scopedCompletedCount} completed {scopedCompletedCount === 1 ? 'task' : 'tasks'}?</span>
+                  <span>{t('Remove')} {scopedCompletedCount} {t('completed')} {t(scopedCompletedCount === 1 ? 'task' : 'tasks')}?</span>
                   <div className="confirm-actions">
-                    <button className="text-action destructive-action" type="button" onClick={clearCompleted}>Clear</button>
-                    <button className="text-action" type="button" onClick={() => setClearConfirmation(false)}>Keep</button>
+                    <button className="text-action destructive-action" type="button" onClick={clearCompleted}>{t('Clear')}</button>
+                    <button className="text-action" type="button" onClick={() => setClearConfirmation(false)}>{t('Keep')}</button>
                   </div>
                 </div>
               )}
@@ -965,17 +1177,17 @@ function App() {
               {visibleTasks.length > 0 ? (
                 <>
                   <ul className="task-list">
-                    {(filter === 'All' ? activeVisibleTasks : visibleTasks).map((task) => <TaskItem key={task.id} task={task} onToggle={toggleTask} onUpdate={updateTask} onDelete={deleteTask} onOpenDetails={openTaskDetails} />)}
+                    {(filter === 'All' ? activeVisibleTasks : visibleTasks).map((task) => <TaskItem key={task.id} task={task} onToggle={toggleTask} onToggleFavorite={toggleFavorite} onUpdate={updateTask} onDelete={deleteTask} onOpenDetails={openTaskDetails} />)}
                   </ul>
                   {filter === 'All' && completedVisibleTasks.length > 0 && (
                     <section className="completed-task-group">
                       <button className="completed-group-toggle" type="button" aria-expanded={completedExpanded} onClick={() => setCompletedExpanded((expanded) => !expanded)}>
-                        <span>Completed <strong>{completedVisibleTasks.length} done</strong></span>
+                        <span>{t('Completed')} <strong>{completedVisibleTasks.length} {t('Done')}</strong></span>
                         <span className={completedExpanded ? 'completed-chevron is-expanded' : 'completed-chevron'} aria-hidden="true">⌄</span>
                       </button>
                       {completedExpanded && (
                         <ul className="task-list completed-task-list">
-                          {completedVisibleTasks.map((task) => <TaskItem key={task.id} task={task} onToggle={toggleTask} onUpdate={updateTask} onDelete={deleteTask} onOpenDetails={openTaskDetails} />)}
+                          {completedVisibleTasks.map((task) => <TaskItem key={task.id} task={task} onToggle={toggleTask} onToggleFavorite={toggleFavorite} onUpdate={updateTask} onDelete={deleteTask} onOpenDetails={openTaskDetails} />)}
                         </ul>
                       )}
                     </section>
@@ -986,34 +1198,122 @@ function App() {
                   <span className="empty-icon" aria-hidden="true"><ListChecks size={24} weight="duotone" /></span>
                   <h3>{emptyState.title}</h3>
                   <p>{emptyState.message}</p>
-                  {canResetEmptyState && <button className="empty-reset" type="button" onClick={() => { setQuery(''); setCategoryFilter('All'); setFilter('All') }}>Show all tasks</button>}
+                  {canResetEmptyState && <button className="empty-reset" type="button" onClick={() => { setQuery(''); setCategoryFilter('All'); setFilter('All') }}>{t('Show all tasks')}</button>}
                 </div>
               )}
 
               {undoTask && (
                 <div className="undo-toast">
-                  <p role="status">Task deleted</p>
-                  <button className="undo-button" type="button" onClick={undoDelete}><ArrowCounterClockwise size={15} aria-hidden="true" />Undo</button>
+                  <p role="status">{t('Task deleted')}</p>
+                  <button className="undo-button" type="button" onClick={undoDelete}><ArrowCounterClockwise size={15} aria-hidden="true" />{t('Undo')}</button>
                 </div>
               )}
 
-              <div className="phone-progress" role="group" aria-label={`${categoryTasks.length} total, ${activeInCategoryCount} active, ${scopedCompletedCount} completed`}>
-                <span><CheckCircle size={16} weight="duotone" aria-hidden="true" />{categoryTasks.length} total, {activeInCategoryCount} active, {scopedCompletedCount} done</span>
-                <progress value={scopedCompletedCount} max={Math.max(categoryTasks.length, 1)} aria-label={`${scopedCompletedCount} of ${categoryTasks.length} tasks completed`} />
+              <div className="phone-progress" role="group" aria-label={`${categoryTasks.length} ${t('total')}, ${activeInCategoryCount} ${t('active')}, ${scopedCompletedCount} ${t('completed')}`}>
+                <span><CheckCircle size={16} weight="duotone" aria-hidden="true" />{categoryTasks.length} {t('total')}, {activeInCategoryCount} {t('active')}, {scopedCompletedCount} {t('Done')}</span>
+                <progress value={scopedCompletedCount} max={Math.max(categoryTasks.length, 1)} aria-label={`${scopedCompletedCount} / ${categoryTasks.length} ${t('tasks completed')}`} />
               </div>
 
-              <button className="add-task-fab" type="button" aria-label="Add a task" onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}>
+              <button className="add-task-fab" type="button" aria-label={t('Add a task')} onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}>
                 {composerOpen ? <X size={24} weight="bold" aria-hidden="true" /> : <Plus size={26} weight="bold" aria-hidden="true" />}
               </button>
             </div>
           </div>
         </section>
-        {screen !== 'welcome' && (
-          <nav className="bottom-tab-bar" aria-label="Primary" inert={modalOpen}>
-            <button type="button" className={activeNavigation === 'today' ? 'is-current' : ''} aria-current={activeNavigation === 'today' ? 'page' : undefined} onClick={openTodayDashboard}><Sun size={21} weight="duotone" aria-hidden="true" /><span>Today</span></button>
-            <button type="button" className={activeNavigation === 'categories' ? 'is-current' : ''} aria-current={activeNavigation === 'categories' ? 'page' : undefined} onClick={() => selectCategory('All')}><ListChecks size={21} aria-hidden="true" /><span>Categories</span></button>
-            <button type="button" className={activeNavigation === 'search' ? 'is-current' : ''} aria-current={activeNavigation === 'search' ? 'page' : undefined} onClick={() => { setScreen('tasks'); setActiveNavigation('search') }}><MagnifyingGlass size={21} aria-hidden="true" /><span>Search</span></button>
-            <button type="button" aria-haspopup="dialog" aria-expanded={settingsOpen} onClick={(event) => { settingsTriggerRef.current = event.currentTarget; setSettingsOpen(true) }}><GearSix size={21} aria-hidden="true" /><span>Settings</span></button>
+        {screen === 'calendar' && (
+          <CalendarScreen
+            tasks={tasks}
+            selectedDate={selectedCalendarDate}
+            month={calendarMonth}
+            todayDate={todayDateKey}
+            onMonthChange={(offset) => {
+              const nextMonth = shiftCalendarMonth(calendarMonth, offset)
+              setCalendarMonth(nextMonth)
+              if (selectedCalendarDate.slice(0, 7) !== getLocalDateKey(nextMonth).slice(0, 7)) {
+                setSelectedCalendarDate(getLocalDateKey(nextMonth))
+              }
+            }}
+            onSelectDate={(dateKey) => {
+              setSelectedCalendarDate(dateKey)
+              const [year, month] = dateKey.split('-').map(Number)
+              setCalendarMonth(new Date(year, month - 1, 1))
+            }}
+            onOpenTask={openTaskDetails}
+            onToggleTask={toggleTask}
+            onToggleFavorite={toggleFavorite}
+            onUpdateTask={updateTask}
+            onDeleteTask={deleteTask}
+            unreadCount={unreadNotificationCount}
+            onOpenReminders={openNotifications}
+            onAddTask={(trigger) => {
+              composerTriggerRef.current = trigger
+              setComposerOpen(true)
+            }}
+          />
+        )}
+        {screen === 'notifications' && (
+          <NotificationsScreen
+            notifications={dueNotifications}
+            storageError={notificationStorageError ?? browserNotificationError}
+            onOpenSettings={openNotificationSettings}
+            onOpenTask={openNotificationTask}
+          />
+        )}
+        {screen === 'notification-settings' && (
+          <NotificationSettingsScreen
+            permission={browserNotificationPermission}
+            browserAlertsEnabled={browserAlertsPreference.enabled}
+            error={browserAlertsPreference.failed && !browserNotificationError
+              ? t('Browser notification preferences could not be read safely. Reload Daymark before changing them.')
+              : browserNotificationError}
+            onSave={saveBrowserAlertPreference}
+            onCancel={openNotifications}
+          />
+        )}
+        {screen === 'profile' && (
+          <ProfileScreen
+            key={accountUser?.id ?? 'local'}
+            themePreference={themePreference}
+            onThemePreferenceChange={setThemePreference}
+            onManageAccount={openAccount}
+            isSignedIn={Boolean(accountUser)}
+            accountEmail={accountUser?.email ?? null}
+            profileName={typeof accountUser?.user_metadata.daymark_display_name === 'string'
+              ? accountUser.user_metadata.daymark_display_name
+              : typeof accountUser?.user_metadata.full_name === 'string'
+                ? accountUser.user_metadata.full_name
+                : typeof accountUser?.user_metadata.name === 'string' ? accountUser.user_metadata.name : null}
+            profileImage={typeof accountUser?.user_metadata.avatar_url === 'string'
+              ? accountUser.user_metadata.avatar_url
+              : typeof accountUser?.user_metadata.picture === 'string' ? accountUser.user_metadata.picture : null}
+            profileScope={accountUser?.id ?? 'local'}
+            onUpdateProfileName={updateAccountProfileName}
+            syncState={syncState}
+            onSignOut={signOut}
+            notificationPermission={browserNotificationPermission}
+            browserAlertsEnabled={browserAlertsPreference.enabled}
+            notificationError={browserNotificationError}
+            onRequestNotificationPermission={async () => { await requestBrowserNotifications() }}
+            onOpenNotifications={openNotifications}
+          />
+        )}
+        {screen === 'profile' || screen === 'notifications' || screen === 'notification-settings' ? (
+          <nav
+            className={`bottom-tab-bar profile-reference-nav${screen !== 'profile' ? ' notifications-reference-nav' : ''}`}
+            aria-label={t('Primary')}
+            inert={modalOpen}
+          >
+            <button type="button" className={activeNavigation === 'calendar' ? 'is-current' : ''} aria-current={activeNavigation === 'calendar' ? 'page' : undefined} onClick={openCalendar}><ProfileCalendar size={20} aria-hidden="true" /><span>{t('Calendar')}</span></button>
+            <button type="button" onClick={openFavorites}><ProfileHeart size={20} aria-hidden="true" /><span>{t('Favorites')}</span></button>
+            <button type="button" className={activeNavigation === 'notifications' ? 'is-current' : ''} aria-current={activeNavigation === 'notifications' ? 'page' : undefined} onClick={openNotifications}><ProfileBell size={20} aria-hidden="true" /><span>{t('Notifications')}</span></button>
+            <button type="button" className={activeNavigation === 'profile' ? 'is-current' : ''} aria-current={activeNavigation === 'profile' ? 'page' : undefined} onClick={openProfile}><ProfileUser size={20} aria-hidden="true" /><span>{t('Profile')}</span></button>
+          </nav>
+        ) : screen !== 'welcome' && (
+          <nav className="bottom-tab-bar" aria-label={t('Primary')} inert={modalOpen}>
+            <button type="button" className={activeNavigation === 'today' ? 'is-current' : ''} aria-current={activeNavigation === 'today' ? 'page' : undefined} onClick={openTodayDashboard}><Sun size={21} aria-hidden="true" /><span>{t('Today')}</span></button>
+            <button type="button" className={activeNavigation === 'calendar' ? 'is-current' : ''} aria-current={activeNavigation === 'calendar' ? 'page' : undefined} onClick={openCalendar}><CalendarBlank size={21} aria-hidden="true" /><span>{t('Calendar')}</span></button>
+            <button type="button" className={activeNavigation === 'categories' ? 'is-current' : ''} aria-current={activeNavigation === 'categories' ? 'page' : undefined} onClick={() => selectCategory('All')}><ListChecks size={21} aria-hidden="true" /><span>{t('Categories')}</span></button>
+            <button type="button" className={activeNavigation === 'profile' ? 'is-current' : ''} aria-current={activeNavigation === 'profile' ? 'page' : undefined} onClick={openProfile}><User size={21} aria-hidden="true" /><span>{t('Profile')}</span></button>
           </nav>
         )}
         {composerOpen && (
@@ -1021,7 +1321,7 @@ function App() {
             onAdd={addTask}
             onClose={() => setComposerOpen(false)}
             initialCategory={categoryFilter === 'All' || categoryFilter === 'Today' ? 'Work' : categoryFilter}
-            initialDueDate={screen === 'categories' || categoryFilter === 'Today' ? todayDateKey : ''}
+            initialDueDate={screen === 'calendar' ? selectedCalendarDate : screen === 'categories' || categoryFilter === 'Today' ? todayDateKey : ''}
           />
         )}
         {detailsTask && (
@@ -1029,21 +1329,6 @@ function App() {
             task={detailsTask}
             onSave={saveTaskDetails}
             onClose={() => setDetailsTaskId(null)}
-          />
-        )}
-        {settingsOpen && (
-          <SettingsDialog
-            themePreference={themePreference}
-            onThemePreferenceChange={setThemePreference}
-            onManageAccount={() => openAccount(settingsTriggerRef.current ?? undefined)}
-            isSignedIn={Boolean(accountUser)}
-            accountEmail={accountUser?.email ?? null}
-            syncState={syncState}
-            onSignOut={async () => {
-              await signOut()
-              setSettingsOpen(false)
-            }}
-            onClose={() => setSettingsOpen(false)}
           />
         )}
         {accountOpen && (
@@ -1063,11 +1348,11 @@ function App() {
       </main>
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
       {showSplash && (
-        <div className={`launch-splash ${splashLeaving ? 'is-leaving' : ''}`} role="status" aria-live="polite" aria-label="Opening Daymark">
+        <div className={`launch-splash ${splashLeaving ? 'is-leaving' : ''}`} role="status" aria-live="polite" aria-label={t('Opening Daymark')}>
           <div className="launch-lockup">
             <span className="launch-mark" aria-hidden="true"><ListChecks size={42} weight="bold" /></span>
             <span className="launch-name">daymark</span>
-            <span className="launch-caption">A little more room for your day.</span>
+            <span className="launch-caption">{t('A little more room for your day.')}</span>
           </div>
         </div>
       )}
@@ -1081,6 +1366,14 @@ function sameTaskLists(left: Task[], right: Task[]) {
 
 function sameTombstones(left: ReturnType<typeof readTaskTombstones>, right: ReturnType<typeof readTaskTombstones>) {
   return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function App() {
+  return (
+    <LocaleProvider>
+      <AppContent />
+    </LocaleProvider>
+  )
 }
 
 export default App

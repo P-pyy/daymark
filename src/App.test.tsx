@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { type Category, type Task } from './taskTypes'
+import { categories, type Category, type Task } from './taskTypes'
 
 vi.mock('./supabaseClient', () => ({ supabase: null }))
 
@@ -61,7 +61,7 @@ function openDashboard() {
 }
 
 function chooseTodayCategory() {
-  fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: /^Today/ }))
+  fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: "View today's tasks" }))
 }
 
 function chooseCategoryFromDashboard(category: Category) {
@@ -78,7 +78,7 @@ function openTaskDetails(title: string) {
 }
 
 function openDashboardComposer() {
-  fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: 'Add a task' }))
+  fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: 'Plan a new thought or task...' }))
 }
 
 afterEach(() => {
@@ -94,68 +94,129 @@ describe('Daymark task UI', () => {
     const categoryRegion = screen.getByRole('region', { name: 'Task categories' })
     expect(screen.queryByRole('region', { name: 'Morning focus ritual' })).not.toBeInTheDocument()
     expect(within(categoryRegion).getByRole('button', { name: /^Personal/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Manage' }))
+    expect(within(categoryRegion).queryByRole('button', { name: 'Manage' })).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
 
     expect(screen.getByRole('main', { name: 'Daymark task planner' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Task categories' })).not.toBeInTheDocument()
   })
 
-  it('opens Settings from the bottom navigation and updates the saved appearance preference', () => {
+  it('uses one primary add-task action on the Today dashboard', () => {
+    renderTasks()
+    openDashboard()
+
+    const dashboard = screen.getByRole('region', { name: 'Task categories' })
+    expect(within(dashboard).getByRole('button', { name: 'Plan a new thought or task...' })).toBeInTheDocument()
+    expect(within(dashboard).getByRole('button', { name: "View today's tasks" })).toBeInTheDocument()
+    expect(within(dashboard).getAllByRole('button', { name: /^(Work|Personal|Home|Learning)/ })).toHaveLength(categories.length)
+    expect(within(dashboard).queryByRole('button', { name: 'Search tasks' })).not.toBeInTheDocument()
+    expect(dashboard.querySelector('.quick-intake-submit')).toBeNull()
+    expect(within(dashboard).queryByRole('button', { name: /^Today/ })).not.toBeInTheDocument()
+    expect(within(dashboard).queryByRole('button', { name: 'Add a task' })).not.toBeInTheDocument()
+
+    fireEvent.click(within(dashboard).getByRole('button', { name: 'Plan a new thought or task...' }))
+    expect(screen.getByRole('dialog', { name: 'Create New Task' })).toBeInTheDocument()
+  })
+
+  it('opens the Profile screen from the bottom navigation and updates the saved appearance preference', () => {
     renderTasks()
 
     const navigation = within(screen.getByRole('navigation', { name: 'Primary' }))
+    expect(navigation.getAllByRole('button')).toHaveLength(4)
     expect(navigation.queryByRole('button', { name: /Theme/ })).not.toBeInTheDocument()
-    const settingsButton = navigation.getByRole('button', { name: 'Settings' })
+    const settingsButton = navigation.getByRole('button', { name: 'Profile' })
     fireEvent.click(settingsButton)
 
-    const dialog = screen.getByRole('dialog', { name: 'Settings' })
-    const darkOption = within(dialog).getByRole('radio', { name: /Dark/ })
-    const systemOption = within(dialog).getByRole('radio', { name: /System/ })
-    expect(systemOption).toBeChecked()
-    expect(within(dialog).getByText(/sync to your account/)).toBeInTheDocument()
-    expect(systemOption).toHaveFocus()
-    fireEvent.click(darkOption)
+    const profile = screen.getByRole('main', { name: 'Your Daymark profile' })
+    const appearanceSelect = within(profile).getByRole('combobox', { name: 'Appearance' })
+    expect(appearanceSelect).toHaveValue('system')
+    expect(within(profile).getByText(/sync across your signed-in devices/)).toBeInTheDocument()
+    expect(within(profile).queryByText(/timezone/i)).not.toBeInTheDocument()
+    expect(settingsButton).toHaveAttribute('aria-current', 'page')
+    expect(navigation.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+      'Calendar',
+      'Favorites',
+      'Notifications',
+      'Profile',
+    ])
+    fireEvent.change(appearanceSelect, { target: { value: 'dark' } })
 
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
     expect(localStorage.getItem(themeStorageKey)).toBe('dark')
 
-    fireEvent.keyDown(window, { key: 'Escape' })
-    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
-    expect(settingsButton).toHaveFocus()
-
-    fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: 'Switch to light theme' }))
+    fireEvent.click(navigation.getByRole('button', { name: 'Favorites' }))
+    const favoritesRegion = screen.getByRole('region', { name: 'Favorite tasks' })
+    const favoritesThemeToggle = favoritesRegion.querySelector<HTMLButtonElement>('.tasks-screen .theme-toggle')
+    expect(favoritesThemeToggle).not.toBeNull()
+    if (!favoritesThemeToggle) throw new Error('The Favorites screen theme toggle is missing.')
+    fireEvent.click(favoritesThemeToggle)
     expect(document.documentElement).toHaveAttribute('data-theme', 'light')
     expect(localStorage.getItem(themeStorageKey)).toBe('light')
 
-    fireEvent.click(settingsButton)
-    const reopenedDialog = screen.getByRole('dialog', { name: 'Settings' })
-    fireEvent.click(within(reopenedDialog).getByRole('radio', { name: /System/ }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' }))
+    const settingsNavigation = within(screen.getByRole('navigation', { name: 'Primary' }))
+    fireEvent.click(settingsNavigation.getByRole('button', { name: 'Notifications' }))
+    expect(screen.getByRole('main', { name: 'Daymark reminders' })).toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' }))
+    fireEvent.change(within(screen.getByRole('main', { name: 'Your Daymark profile' })).getByRole('combobox', { name: 'Appearance' }), { target: { value: 'system' } })
     expect(localStorage.getItem(themeStorageKey)).toBeNull()
     expect(document.documentElement).toHaveAttribute('data-theme', 'light')
   })
 
-  it('opens the profile from the dashboard avatar and explains missing account setup', () => {
+  it('applies the selected language across navigation, calendar, and task forms', () => {
+    renderTasks()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'fil' } })
+
+    expect(document.documentElement).toHaveAttribute('lang', 'fil')
+    const navigation = screen.getByRole('navigation', { name: 'Pangunahing nabigasyon' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Kalendaryo' }))
+    expect(screen.getByRole('heading', { name: 'Kalendaryo mo' })).toBeInTheDocument()
+    const calendarRegion = screen.getByRole('region', { name: 'Kalendaryo mo' })
+    fireEvent.click(within(calendarRegion).getAllByRole('button', { name: 'Magdagdag ng gawain' })[0])
+
+    const dialog = screen.getByRole('dialog', { name: 'Gumawa ng bagong gawain' })
+    expect(within(dialog).getByText('Kategorya')).toBeInTheDocument()
+    expect(within(dialog).getByText('Prayoridad')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Profile' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Wika' }), { target: { value: 'en' } })
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+  })
+
+  it('restores the selected language on app startup', () => {
+    localStorage.setItem('daymark.language.preference.v1', 'fil')
     renderTasks()
 
-    const profileButton = screen.getByRole('button', { name: 'Sign in with Google' })
+    expect(document.documentElement).toHaveAttribute('lang', 'fil')
+    expect(screen.getByRole('navigation', { name: 'Pangunahing nabigasyon' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Lahat ng gawain' })).toBeInTheDocument()
+  })
+
+  it('opens account setup from the Profile destination', () => {
+    renderTasks()
+
+    const profileButton = within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' })
     fireEvent.click(profileButton)
+    fireEvent.click(within(screen.getByRole('main', { name: 'Your Daymark profile' })).getByRole('button', { name: 'Manage account' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Profile' })
     expect(within(dialog).getByRole('heading', { name: 'Profile setup is needed' })).toBeInTheDocument()
     expect(within(dialog).getByText(/Supabase project and Google sign-in configuration/)).toBeInTheDocument()
     fireEvent.keyDown(window, { key: 'Escape' })
-    expect(profileButton).toHaveFocus()
+    expect(screen.queryByRole('dialog', { name: 'Profile' })).not.toBeInTheDocument()
   })
 
-  it('opens the profile from Settings', () => {
+  it('keeps Profile as the active destination while account setup is open', () => {
     renderTasks()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Settings' }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' }))
 
-    const settingsDialog = screen.getByRole('dialog', { name: 'Settings' })
-    fireEvent.click(within(settingsDialog).getByRole('button', { name: 'Connect Google account' }))
+    const profile = screen.getByRole('main', { name: 'Your Daymark profile' })
+    fireEvent.click(within(profile).getByRole('button', { name: 'Manage account' }))
 
-    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
+    expect(screen.getByRole('main', { name: 'Your Daymark profile' })).toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Profile' })).toBeInTheDocument()
   })
 
@@ -588,6 +649,82 @@ describe('Daymark task UI', () => {
     expect(screen.getByRole('heading', { name: 'No tasks match your search' })).toBeInTheDocument()
   })
 
+  it('shows dated tasks on the calendar and filters favorites in the task list', () => {
+    const task = makeTask('Favorite calendar task', { dueDate: dateKey() })
+    renderTasks([task, makeTask('Another task')])
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Calendar' }))
+    const calendarDayPanel = screen.getByRole('main', { name: 'Daymark calendar' }).querySelector<HTMLElement>('.calendar-day-panel')
+    if (!calendarDayPanel) throw new Error('Calendar day panel was not rendered')
+    expect(within(calendarDayPanel).getByText('Favorite calendar task', { exact: true })).toBeInTheDocument()
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add “Favorite calendar task” to favorites' }))
+    expect(JSON.parse(localStorage.getItem(tasksStorageKey) || '[]')).toEqual([
+      expect.objectContaining({ id: task.id, favorite: true }),
+      expect.objectContaining({ title: 'Another task', favorite: false }),
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Favorites' }))
+    const favoritesRegion = screen.getByRole('region', { name: 'Favorite tasks' })
+    expect(within(favoritesRegion).getByText('Favorite calendar task', { exact: true })).toBeInTheDocument()
+    expect(within(favoritesRegion).queryByText('Another task', { exact: true })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Favorites' }))
+    expect(screen.getByRole('region', { name: 'Your task list' })).toBeInTheDocument()
+    expect(screen.getByText('Another task', { exact: true })).toBeInTheDocument()
+  })
+
+  it('creates a due-today reminder once on open and persists the read state', () => {
+    const task = makeTask('Reminder on open', { dueDate: dateKey() })
+    renderTasks([task])
+
+    const reminderKey = 'daymark.due-notifications.v1'
+    const created = JSON.parse(localStorage.getItem(reminderKey) || '[]')
+    expect(created).toHaveLength(1)
+    expect(created[0]).toEqual(expect.objectContaining({
+      id: `${task.id}@${dateKey()}`,
+      taskTitle: task.title,
+      dueDate: dateKey(),
+      read: false,
+    }))
+
+    fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: /Notifications, 1 unread/ }))
+    expect(screen.getByRole('button', { name: new RegExp(`Open task “${task.title}”`) })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'Unread' }))
+    expect(screen.getByRole('button', { name: new RegExp(`Open task “${task.title}”`) })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
+    expect(screen.getByRole('main', { name: 'Notification settings' })).toBeInTheDocument()
+    expect(screen.getByText('Due-today task reminders')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(reminderKey) || '[]')[0].read).toBe(false)
+  })
+
+  it('saves the browser-alert opt-out from notification settings', async () => {
+    vi.stubGlobal('Notification', { permission: 'granted', requestPermission: vi.fn() })
+    renderTasks()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
+    const browserAlertsSwitch = screen.getByRole('switch', { name: 'Push notifications' })
+    expect(browserAlertsSwitch).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(browserAlertsSwitch)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(localStorage.getItem('daymark.browser-alerts.enabled.v1')).toBe('false')
+    expect(await screen.findByRole('main', { name: 'Daymark reminders' })).toBeInTheDocument()
+  })
+
+  it('shows the Daymark empty reminder illustration for all and unread filters', () => {
+    renderTasks()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Notifications' }))
+
+    expect(screen.getByRole('heading', { name: 'No notifications yet' })).toBeInTheDocument()
+    expect(document.querySelector('.notifications-empty-state img')).toHaveAttribute('src', '/daymark-empty-notifications.svg')
+    fireEvent.click(screen.getByRole('tab', { name: 'Unread' }))
+    expect(screen.getByRole('heading', { name: 'No unread notifications' })).toBeInTheDocument()
+  })
+
   it('keeps Today and status filters based on parent task fields', () => {
     renderTasks([
       makeTask('Active parent', { dueDate: dateKey(), subtasks: [{ id: 'done-child', title: 'Done child', completed: true }] }),
@@ -661,6 +798,7 @@ describe('Daymark task UI', () => {
       updatedAt: expect.any(Number),
       notes: '',
       subtasks: [],
+      favorite: false,
     }])
     expect(screen.queryByRole('button', { name: 'Retry save' })).not.toBeInTheDocument()
   })
