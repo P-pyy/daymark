@@ -44,7 +44,7 @@ type CategoryFilter = Category | 'All' | 'Today'
 type ResolvedTheme = 'light' | 'dark'
 type AppScreen = 'welcome' | 'categories' | 'tasks' | 'calendar' | 'notifications' | 'notification-settings' | 'profile'
 type TaskStorageIssue = 'load' | 'save'
-type AppNavigation = 'today' | 'categories' | 'calendar' | 'search' | 'notifications' | 'profile'
+type AppNavigation = 'today' | 'calendar' | 'search' | 'notifications' | 'profile'
 
 const splashStorageKey = 'daymark.splash.seen.v1'
 const themeStorageKey = 'daymark.theme.preference.v1'
@@ -177,7 +177,7 @@ function AppContent() {
   const [showSplash, setShowSplash] = useState(shouldShowSplash)
   const [splashLeaving, setSplashLeaving] = useState(false)
   const [screen, setScreen] = useState<AppScreen>(() => readInitialScreen(storedTaskState.tasks.length > 0))
-  const [activeNavigation, setActiveNavigation] = useState<AppNavigation>(screen === 'tasks' ? 'categories' : 'today')
+  const [activeNavigation, setActiveNavigation] = useState<AppNavigation>('today')
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference)
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(getSystemTheme)
   const [tasks, setTasks] = useState<Task[]>(storedTaskState.tasks)
@@ -735,11 +735,26 @@ function AppContent() {
   })
   const visibleTasks = sortTasks(filteredTasks, sortOrder)
   const heading = favoriteOnly ? t('Favorites') : categoryFilter === 'All' ? t('All tasks') : t(categoryFilter)
+  const categoryTaskScreen = screen === 'tasks' && !favoriteOnly && categoryFilter !== 'Today'
+  const categoryConceptScreen = categoryTaskScreen && categoryFilter !== 'All'
+  const categoryDescription = categoryFilter === 'Work'
+    ? t('Projects and plans')
+    : categoryFilter === 'Personal'
+      ? t('Time for yourself')
+      : categoryFilter === 'Home'
+        ? t('Little things at home')
+        : categoryFilter === 'Learning'
+          ? t('Ideas to explore')
+          : t('Everything on your list')
+  const TaskHeadingIcon = categoryFilter === 'All' || categoryFilter === 'Today'
+    ? ListChecks
+    : categoryIcons[categoryFilter]
   const detailsTask = detailsTaskId === null ? null : tasks.find((task) => task.id === detailsTaskId) ?? null
   const activeVisibleTasks = visibleTasks.filter((task) => !task.completed)
   const completedVisibleTasks = visibleTasks.filter((task) => task.completed)
   const completionPercentage = todayTasks.length === 0 ? 0 : Math.round((todayCompletedCount / todayTasks.length) * 100)
   const unreadNotificationCount = dueNotifications.filter((notification) => !notification.read).length
+  const selectedCalendarDayHasTasks = tasks.some((task) => task.dueDate === selectedCalendarDate)
   const dateLabel = new Intl.DateTimeFormat(intlLocale, {
     weekday: 'long', month: 'long', day: 'numeric',
   }).format(now)
@@ -752,8 +767,12 @@ function AppContent() {
     }
     saveTasks([task, ...tasks])
     setFilter('All')
+    const keepCategoryScope = screen === 'tasks'
+      && categoryFilter !== 'All'
+      && categoryFilter !== 'Today'
+      && task.category === categoryFilter
     const keepTodayScope = dueDate === todayDateKey && (categoryFilter === 'Today' || screen === 'categories')
-    setCategoryFilter(keepTodayScope ? 'Today' : 'All')
+    setCategoryFilter(keepCategoryScope ? categoryFilter : keepTodayScope ? 'Today' : 'All')
     setQuery('')
     setAnnouncement(`Added ${title}`)
     setUndoTask(null)
@@ -780,7 +799,7 @@ function AppContent() {
     setFilter('All')
     setQuery('')
     setScreen('tasks')
-    setActiveNavigation('categories')
+    setActiveNavigation('today')
     try {
       localStorage.setItem(onboardingStorageKey, 'complete')
     } catch {
@@ -800,7 +819,7 @@ function AppContent() {
     setFilter('All')
     setQuery('')
     setScreen('tasks')
-    setActiveNavigation('categories')
+    setActiveNavigation('today')
   }
 
   function openNotifications() {
@@ -967,7 +986,7 @@ function AppContent() {
     <div className={`app-shell reference-shell${screen === 'profile' ? ' profile-open' : ''}${screen === 'notification-settings' ? ' notification-settings-open' : ''}${screen === 'categories' ? ' today-dashboard-open' : ''}`}>
       <a className="skip-link" href="#main-content" aria-hidden={showSplash || modalOpen} tabIndex={showSplash || modalOpen ? -1 : 0}>{t('Skip to tasks')}</a>
       <main
-        className={`app-stage flow-${screen}`}
+        className={`app-stage flow-${screen}${screen === 'calendar' ? ' calendar-concept-stage' : ''}`}
         id="main-content"
         aria-label={screen === 'welcome' ? t('Welcome to Daymark')
           : screen === 'categories' ? t('Choose a task category')
@@ -1018,6 +1037,9 @@ function AppContent() {
             </header>
             <div className="dashboard-category-heading">
               <div><h2>{t('Categories')}</h2><span>{t('4 categories')}</span></div>
+              <button className="today-tasks-link all-tasks-link" type="button" onClick={() => selectCategory('All')}>
+                {t('All tasks')}
+              </button>
             </div>
             <div className="category-cards">
               {categories.map((category) => {
@@ -1087,37 +1109,96 @@ function AppContent() {
         </section>
 
         <section className="device tasks-device" aria-label={favoriteOnly ? t('Favorite tasks') : t('Your task list')} inert={modalOpen || screen !== 'tasks'}>
-          <div className="device-screen tasks-screen">
+          <div className={`device-screen tasks-screen${categoryTaskScreen ? ` category-task-screen category-filter-${categoryFilter.toLowerCase()}` : ''}${categoryConceptScreen ? ' category-concept-screen' : ''}`}>
             <header className="tasks-screen-header">
-              <div className="screen-action-row">
-                <button
-                  className="screen-icon-button"
-                  type="button"
-                  aria-label={t('Back to categories')}
-                  onClick={openTodayDashboard}
-                >
-                  <ArrowLeft size={20} aria-hidden="true" />
-                </button>
-                <span className="screen-date">{dateLabel}</span>
+              <div className={`screen-action-row${categoryConceptScreen ? ' category-concept-topline' : ''}`}>
+                {!categoryConceptScreen && (
+                  <button
+                    className="screen-icon-button"
+                    type="button"
+                    aria-label={t('Back to categories')}
+                    onClick={openTodayDashboard}
+                  >
+                    <ArrowLeft size={20} aria-hidden="true" />
+                  </button>
+                )}
+                {!categoryConceptScreen && <span className="screen-date">{dateLabel}</span>}
                 <div className="category-screen-actions">
-                  <ThemeToggle theme={theme} onToggle={toggleTheme} />
+                  {!categoryConceptScreen && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
                   <ReminderShortcut unreadCount={unreadNotificationCount} onClick={openNotifications} />
                 </div>
               </div>
+              {categoryConceptScreen && (
+                <button className="category-concept-back" type="button" onClick={openTodayDashboard}>
+                  <ArrowLeft size={17} weight="bold" aria-hidden="true" />
+                  <span>{t('All categories')}</span>
+                </button>
+              )}
               <div className="tasks-screen-title-row">
-                <span className="task-title-avatar" aria-hidden="true"><User size={27} weight="fill" /></span>
+                <span className={`task-title-avatar${categoryTaskScreen ? ` category-title-icon icon-${categoryFilter.toLowerCase()}` : ''}`} aria-hidden="true">
+                  {categoryTaskScreen
+                    ? <TaskHeadingIcon size={categoryConceptScreen ? 24 : 27} weight="duotone" />
+                    : <User size={27} weight="fill" />}
+                </span>
                 <div className="tasks-screen-titles">
-                  <p>{favoriteOnly
+                  <p>{categoryConceptScreen
+                    ? categoryDescription
+                    : favoriteOnly
                     ? `${tasks.filter((task) => task.favorite && !task.completed).length} ${t('saved favorites')}`
                     : categoryFilter === 'Today'
                     ? `${activeInCategoryCount} ${t('active today')}`
                     : `${t('Category')} · ${activeInCategoryCount} ${t(activeInCategoryCount === 1 ? 'task' : 'tasks')} ${t('active')}`}</p>
                   <h1>{heading}</h1>
+                  {categoryConceptScreen && (
+                    <span className="category-concept-remaining">
+                      {activeInCategoryCount} {t(activeInCategoryCount === 1 ? 'task' : 'tasks')} {t('left')}
+                    </span>
+                  )}
                 </div>
+                {categoryTaskScreen && <img className="category-task-mascot" src="/daymark-categories-mascot.svg" alt="" aria-hidden="true" />}
               </div>
             </header>
 
             <div className="tasks-screen-body">
+              {categoryConceptScreen ? (
+                <section className="category-concept-content" aria-labelledby="category-concept-heading">
+                  <div className="category-concept-section-heading">
+                    <div>
+                      <h2 id="category-concept-heading">
+                        {activeInCategoryCount === 0 ? t('All done for now') : t('Up next')}
+                      </h2>
+                      <p>{categoryDescription}</p>
+                    </div>
+                    <span className="category-concept-list-count">
+                      {activeInCategoryCount} {t('to do')}
+                    </span>
+                  </div>
+                  {categoryTasks.length > 0 ? (
+                    <ul className="category-concept-task-list">
+                      {sortTasks(categoryTasks, sortOrder).map((task) => (
+                        <TaskItem
+                          key={task.id}
+                          task={task}
+                          onToggle={toggleTask}
+                          onToggleFavorite={toggleFavorite}
+                          onUpdate={updateTask}
+                          onDelete={deleteTask}
+                          onOpenDetails={openTaskDetails}
+                        />
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="category-concept-empty">
+                      <span className="category-concept-empty-icon" aria-hidden="true">
+                        <ListChecks size={22} weight="duotone" />
+                      </span>
+                      <strong>{t('No tasks in')} {t(categoryFilter)}</strong>
+                      <span>{t('Add a task from Today to get started.')}</span>
+                    </div>
+                  )}
+                </section>
+              ) : (
+                <>
               <div className="task-controls">
                 <div className="filter-group" role="group" aria-label={t('Filter tasks')}>
                   {(['All', 'Active', 'Completed'] as const).map((option) => (
@@ -1201,6 +1282,8 @@ function AppContent() {
                   {canResetEmptyState && <button className="empty-reset" type="button" onClick={() => { setQuery(''); setCategoryFilter('All'); setFilter('All') }}>{t('Show all tasks')}</button>}
                 </div>
               )}
+                </>
+              )}
 
               {undoTask && (
                 <div className="undo-toast">
@@ -1209,14 +1292,14 @@ function AppContent() {
                 </div>
               )}
 
-              <div className="phone-progress" role="group" aria-label={`${categoryTasks.length} ${t('total')}, ${activeInCategoryCount} ${t('active')}, ${scopedCompletedCount} ${t('completed')}`}>
+              {!categoryConceptScreen && <div className="phone-progress" role="group" aria-label={`${categoryTasks.length} ${t('total')}, ${activeInCategoryCount} ${t('active')}, ${scopedCompletedCount} ${t('completed')}`}>
                 <span><CheckCircle size={16} weight="duotone" aria-hidden="true" />{categoryTasks.length} {t('total')}, {activeInCategoryCount} {t('active')}, {scopedCompletedCount} {t('Done')}</span>
                 <progress value={scopedCompletedCount} max={Math.max(categoryTasks.length, 1)} aria-label={`${scopedCompletedCount} / ${categoryTasks.length} ${t('tasks completed')}`} />
-              </div>
+              </div>}
 
-              <button className="add-task-fab" type="button" aria-label={t('Add a task')} onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}>
+              {!categoryConceptScreen && !(screen === 'calendar' && !selectedCalendarDayHasTasks) && <button className="add-task-fab" type="button" aria-label={t('Add a task')} onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}>
                 {composerOpen ? <X size={24} weight="bold" aria-hidden="true" /> : <Plus size={26} weight="bold" aria-hidden="true" />}
-              </button>
+              </button>}
             </div>
           </div>
         </section>
@@ -1297,9 +1380,9 @@ function AppContent() {
             onOpenNotifications={openNotifications}
           />
         )}
-        {screen === 'profile' || screen === 'notifications' || screen === 'notification-settings' ? (
+        {screen === 'profile' || screen === 'notification-settings' ? (
           <nav
-            className={`bottom-tab-bar profile-reference-nav${screen !== 'profile' ? ' notifications-reference-nav' : ''}`}
+            className={`bottom-tab-bar profile-reference-nav${screen === 'notification-settings' ? ' notifications-reference-nav' : ''}`}
             aria-label={t('Primary')}
             inert={modalOpen}
           >
@@ -1312,7 +1395,7 @@ function AppContent() {
           <nav className="bottom-tab-bar" aria-label={t('Primary')} inert={modalOpen}>
             <button type="button" className={activeNavigation === 'today' ? 'is-current' : ''} aria-current={activeNavigation === 'today' ? 'page' : undefined} onClick={openTodayDashboard}><Sun size={21} aria-hidden="true" /><span>{t('Today')}</span></button>
             <button type="button" className={activeNavigation === 'calendar' ? 'is-current' : ''} aria-current={activeNavigation === 'calendar' ? 'page' : undefined} onClick={openCalendar}><CalendarBlank size={21} aria-hidden="true" /><span>{t('Calendar')}</span></button>
-            <button type="button" className={activeNavigation === 'categories' ? 'is-current' : ''} aria-current={activeNavigation === 'categories' ? 'page' : undefined} onClick={() => selectCategory('All')}><ListChecks size={21} aria-hidden="true" /><span>{t('Categories')}</span></button>
+            <button type="button" className={activeNavigation === 'notifications' ? 'is-current' : ''} aria-current={activeNavigation === 'notifications' ? 'page' : undefined} onClick={openNotifications}><Bell size={21} aria-hidden="true" /><span>{t('Notifications')}</span></button>
             <button type="button" className={activeNavigation === 'profile' ? 'is-current' : ''} aria-current={activeNavigation === 'profile' ? 'page' : undefined} onClick={openProfile}><User size={21} aria-hidden="true" /><span>{t('Profile')}</span></button>
           </nav>
         )}

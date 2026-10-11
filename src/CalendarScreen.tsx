@@ -1,8 +1,13 @@
-import { Bell, CaretLeft, CaretRight, Plus, Sun } from '@phosphor-icons/react'
+import { Bell, CalendarBlank, CaretLeft, CaretRight, Plus } from '@phosphor-icons/react'
+import '@fontsource/poppins/400.css'
+import '@fontsource/poppins/500.css'
+import '@fontsource/poppins/600.css'
+import '@fontsource/poppins/700.css'
 import { formatCalendarMonth, getCalendarDays } from './calendarUtils'
 import { TaskItem } from './TaskItem'
 import type { Task } from './taskTypes'
 import { useLocale } from './locale'
+import './calendar-screen.css'
 
 interface CalendarScreenProps {
   tasks: Task[]
@@ -60,81 +65,87 @@ export function CalendarScreen({
     .sort((left, right) => Number(left.completed) - Number(right.completed) || right.createdAt - left.createdAt)
 
   return (
-    <section className="calendar-page" aria-labelledby="calendar-heading">
-      <header className="feature-page-header calendar-page-header">
-        <div className="feature-page-copy">
-          <span className="page-eyebrow"><Sun size={16} weight="fill" aria-hidden="true" /> {t('Make room for today')}</span>
-          <h1 id="calendar-heading">{t('Your calendar')}</h1>
-          <p>{t('See what’s coming, one day at a time.')}</p>
-        </div>
-        <div className="calendar-header-actions">
+    <section className="calendar-page calendar-concept" aria-label={t('Your calendar')}>
+      <header className="calendar-concept-header">
+        <div className="calendar-concept-topline">
+          <span className="calendar-concept-date">
+            <CalendarBlank size={14} weight="duotone" aria-hidden="true" />
+            {formatSelectedDate(todayDate, intlLocale)}
+          </span>
           <button
-            className="screen-icon-button notification-shortcut"
+            className="calendar-concept-notification"
             type="button"
             aria-label={`${t('Notifications')}${unreadCount ? `, ${unreadCount} ${t('unread')}` : ''}`}
             onClick={onOpenReminders}
           >
-            <Bell size={20} aria-hidden="true" />
-            {unreadCount > 0 && <span className="notification-badge" aria-hidden="true">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            <Bell size={19} weight="duotone" aria-hidden="true" />
+            {unreadCount > 0 && <span className="calendar-concept-unread-dot" aria-hidden="true" />}
           </button>
-          <button className="calendar-add-button" type="button" onClick={(event) => onAddTask(event.currentTarget)}>
-            <Plus size={18} weight="bold" aria-hidden="true" /><span>{t('Add a task')}</span>
-          </button>
+        </div>
+        <div className="calendar-concept-heading">
+          <div>
+            <h1 id="calendar-heading">{t('Calendar')}</h1>
+            <p>{t('Your month at a glance.')}</p>
+          </div>
+          <img className="calendar-concept-mascot" src="/daymark-calendar-mascot.svg" alt="" aria-hidden="true" />
         </div>
       </header>
 
-      <div className="calendar-layout">
-        <section className="calendar-month-panel" aria-label={t('Choose a day')}>
-          <div className="calendar-month-toolbar">
+      <div className="calendar-concept-main">
+        <section className="calendar-concept-month-panel" aria-label={t('Choose a day')}>
+          <span className="calendar-concept-binding" aria-hidden="true" />
+          <div className="calendar-concept-month-toolbar">
             <h2>{formatCalendarMonth(month, intlLocale)}</h2>
-            <div className="calendar-month-actions">
-              <button className="calendar-today-button" type="button" onClick={() => onSelectDate(todayDate)}>{t('Today')}</button>
-              <button className="calendar-arrow-button" type="button" aria-label={t('Previous month')} onClick={() => onMonthChange(-1)}>
-                <CaretLeft size={17} weight="bold" aria-hidden="true" />
+            <div className="calendar-concept-month-actions">
+              <button className="calendar-concept-today" type="button" onClick={() => onSelectDate(todayDate)}>{t('Today')}</button>
+              <button className="calendar-concept-arrow" type="button" aria-label={t('Previous month')} onClick={() => onMonthChange(-1)}>
+                <CaretLeft size={16} weight="bold" aria-hidden="true" />
               </button>
-              <button className="calendar-arrow-button" type="button" aria-label={t('Next month')} onClick={() => onMonthChange(1)}>
-                <CaretRight size={17} weight="bold" aria-hidden="true" />
+              <button className="calendar-concept-arrow" type="button" aria-label={t('Next month')} onClick={() => onMonthChange(1)}>
+                <CaretRight size={16} weight="bold" aria-hidden="true" />
               </button>
             </div>
           </div>
 
-          <div className="calendar-grid" role="grid" aria-label={formatCalendarMonth(month, intlLocale)}>
-            <div className="calendar-weekdays" role="row">
+          <div className="calendar-concept-grid" role="grid" aria-label={formatCalendarMonth(month, intlLocale)}>
+            <div className="calendar-concept-weekdays" role="row">
               {weekdayNames.map((weekday) => (
-                <span className="calendar-weekday" role="columnheader" key={weekday}>{weekday}</span>
+                <span role="columnheader" key={weekday}>{weekday}</span>
               ))}
             </div>
-            {Array.from({ length: 6 }, (_, weekIndex) => (
-              <div className="calendar-week" role="row" key={weekIndex}>
-                {days.slice(weekIndex * 7, weekIndex * 7 + 7).map(({ date, dateKey, inCurrentMonth }) => {
-                  const dateTasks = tasks.filter((task) => task.dueDate === dateKey)
-                  const activeCount = dateTasks.filter((task) => !task.completed).length
-                  const dateLabel = new Intl.DateTimeFormat(intlLocale, { month: 'long', day: 'numeric', year: 'numeric' }).format(date)
-                  const markers = [...new Set(dateTasks.map((task) => task.category))]
+            <div className="calendar-concept-days">
+              {Array.from({ length: 6 }, (_, weekIndex) => (
+                <div className="calendar-concept-week" role="row" key={weekIndex}>
+                  {days.slice(weekIndex * 7, weekIndex * 7 + 7).map(({ date, dateKey, inCurrentMonth }) => {
+                    const dateTasks = tasks.filter((task) => task.dueDate === dateKey)
+                    const activeCount = dateTasks.filter((task) => !task.completed).length
+                    const dateLabel = new Intl.DateTimeFormat(intlLocale, { month: 'long', day: 'numeric', year: 'numeric' }).format(date)
+                    const markers = [...new Set(dateTasks.map((task) => task.category))]
 
-                  return (
-                    <button
-                      className={`calendar-day ${inCurrentMonth ? '' : 'is-outside-month'} ${selectedDate === dateKey ? 'is-selected' : ''} ${todayDate === dateKey ? 'is-today' : ''}`}
-                      type="button"
-                      role="gridcell"
-                      key={dateKey}
-                      aria-label={`${dateLabel}, ${dateTasks.length} ${dateTasks.length === 1 ? t('task') : t('tasks')}${activeCount ? `, ${activeCount} ${t('Active')}` : ''}`}
-                      aria-pressed={selectedDate === dateKey}
-                      onClick={() => onSelectDate(dateKey)}
-                    >
-                      <span className="calendar-day-number">{date.getDate()}</span>
-                      {dateTasks.length > 0 && (
-                        <span className="calendar-day-markers" aria-hidden="true">
-                          {markers.slice(0, 3).map((category) => <i className={categoryMarkerClass[category]} key={category} />)}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
+                    return (
+                      <button
+                        className={`calendar-concept-day${inCurrentMonth ? '' : ' is-outside'}${selectedDate === dateKey ? ' is-selected' : ''}${todayDate === dateKey ? ' is-today' : ''}`}
+                        type="button"
+                        role="gridcell"
+                        key={dateKey}
+                        aria-label={`${dateLabel}, ${dateTasks.length} ${dateTasks.length === 1 ? t('task') : t('tasks')}${activeCount ? `, ${activeCount} ${t('Active')}` : ''}`}
+                        aria-pressed={selectedDate === dateKey}
+                        onClick={() => onSelectDate(dateKey)}
+                      >
+                        <span className="calendar-concept-day-number">{date.getDate()}</span>
+                        {markers.length > 0 && (
+                          <span className="calendar-concept-day-dots" aria-hidden="true">
+                            {markers.slice(0, 3).map((category) => <i className={categoryMarkerClass[category]} key={category} />)}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
-          <ul className="calendar-legend" aria-label={t('Task categories')}>
+          <ul className="calendar-concept-legend" aria-label={t('Task categories')}>
             <li><i className="calendar-dot-work" aria-hidden="true" />{t('Work')}</li>
             <li><i className="calendar-dot-personal" aria-hidden="true" />{t('Personal')}</li>
             <li><i className="calendar-dot-home" aria-hidden="true" />{t('Home')}</li>
@@ -142,36 +153,49 @@ export function CalendarScreen({
           </ul>
         </section>
 
-        <section className="calendar-day-panel" aria-labelledby="calendar-day-heading">
-          <div className="calendar-day-heading-row">
-            <div>
-              <span className="page-eyebrow">{selectedDate === todayDate ? t('A little space for today') : t('Your plans')}</span>
-              <h2 id="calendar-day-heading">{formatSelectedDate(selectedDate, intlLocale)}</h2>
-            </div>
-            <span className="calendar-task-count">{dayTasks.length} {dayTasks.length === 1 ? t('task') : t('tasks')}</span>
-          </div>
+        <section className="calendar-concept-agenda calendar-day-panel" aria-labelledby="calendar-day-heading">
           {dayTasks.length > 0 ? (
-            <ul className="task-list calendar-task-list">
-              {dayTasks.map((task) => (
-                <TaskItem
-                  key={task.id}
-                  task={task}
-                  onToggle={onToggleTask}
-                  onToggleFavorite={onToggleFavorite}
-                  onUpdate={onUpdateTask}
-                  onDelete={onDeleteTask}
-                  onOpenDetails={onOpenTask}
-                />
-              ))}
-            </ul>
+            <>
+              <div className="calendar-concept-agenda-heading">
+                <div>
+                  <p>{t(selectedDate === todayDate ? 'A little space for today' : 'Your plans')}</p>
+                  <h2 id="calendar-day-heading">{formatSelectedDate(selectedDate, intlLocale)}</h2>
+                </div>
+                <span className="calendar-concept-task-count">{dayTasks.length} {dayTasks.length === 1 ? t('task') : t('tasks')}</span>
+              </div>
+              <ul className="task-list calendar-concept-task-list">
+                {dayTasks.map((task) => (
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    calendarStyle
+                    onToggle={onToggleTask}
+                    onToggleFavorite={onToggleFavorite}
+                    onUpdate={onUpdateTask}
+                    onDelete={onDeleteTask}
+                    onOpenDetails={onOpenTask}
+                  />
+                ))}
+              </ul>
+            </>
           ) : (
-            <div className="calendar-empty-state">
-              <img src="/daymark-empty-calendar.svg" alt="" aria-hidden="true" />
-              <h3>{t('A clear little corner')}</h3>
-              <p>{t('Nothing planned for this day. Add a task whenever you’re ready.')}</p>
-              <button className="calendar-empty-add" type="button" onClick={(event) => onAddTask(event.currentTarget)}>
-                <Plus size={17} weight="bold" aria-hidden="true" /> {t('Plan this day')}
-              </button>
+            <div className="calendar-concept-empty-day">
+              <div className="calendar-concept-agenda-heading">
+                <div>
+                  <p>{t(selectedDate === todayDate ? 'A little space for today' : 'A little space for your plans')}</p>
+                  <h2 id="calendar-day-heading">{formatSelectedDate(selectedDate, intlLocale)}</h2>
+                </div>
+                <span className="calendar-concept-task-count">0 {t('tasks')}</span>
+              </div>
+              <div className="calendar-concept-empty-state">
+                <img src="/daymark-calendar-empty-concept.svg" alt="" aria-hidden="true" />
+                <h3>{t('A clear little corner')}</h3>
+                <p>{t('Nothing planned for this day. Add a task whenever you’re ready.')}</p>
+                <button type="button" onClick={(event) => onAddTask(event.currentTarget)}>
+                  <Plus size={15} weight="bold" aria-hidden="true" />
+                  {t('Plan this day')}
+                </button>
+              </div>
             </div>
           )}
         </section>

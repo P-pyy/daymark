@@ -65,8 +65,13 @@ function chooseTodayCategory() {
 }
 
 function chooseCategoryFromDashboard(category: Category) {
-  fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+  openDashboard()
   fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: new RegExp(`^${category}`) }))
+}
+
+function openAllTasks() {
+  openDashboard()
+  fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: 'All tasks' }))
 }
 
 function openTaskComposer() {
@@ -95,7 +100,7 @@ describe('Daymark task UI', () => {
     expect(screen.queryByRole('region', { name: 'Morning focus ritual' })).not.toBeInTheDocument()
     expect(within(categoryRegion).getByRole('button', { name: /^Personal/ })).toBeInTheDocument()
     expect(within(categoryRegion).queryByRole('button', { name: 'Manage' })).not.toBeInTheDocument()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+    openAllTasks()
 
     expect(screen.getByRole('main', { name: 'Daymark task planner' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBeInTheDocument()
@@ -164,6 +169,25 @@ describe('Daymark task UI', () => {
     expect(document.documentElement).toHaveAttribute('data-theme', 'light')
   })
 
+  it('opens the existing notification center from the primary navigation', () => {
+    const task = makeTask('Primary navigation reminder', { dueDate: dateKey() })
+    renderTasks([task])
+
+    const navigation = within(screen.getByRole('navigation', { name: 'Primary' }))
+    expect(navigation.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+      'Today',
+      'Calendar',
+      'Notifications',
+      'Profile',
+    ])
+    fireEvent.click(navigation.getByRole('button', { name: 'Notifications' }))
+
+    expect(screen.getByRole('main', { name: 'Daymark reminders' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Notifications' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: new RegExp(`Open task “${task.title}”`) })).toBeInTheDocument()
+    expect(navigation.getByRole('button', { name: 'Notifications' })).toHaveAttribute('aria-current', 'page')
+  })
+
   it('applies the selected language across navigation, calendar, and task forms', () => {
     renderTasks()
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' }))
@@ -172,9 +196,9 @@ describe('Daymark task UI', () => {
     expect(document.documentElement).toHaveAttribute('lang', 'fil')
     const navigation = screen.getByRole('navigation', { name: 'Pangunahing nabigasyon' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Kalendaryo' }))
-    expect(screen.getByRole('heading', { name: 'Kalendaryo mo' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Kalendaryo' })).toBeInTheDocument()
     const calendarRegion = screen.getByRole('region', { name: 'Kalendaryo mo' })
-    fireEvent.click(within(calendarRegion).getAllByRole('button', { name: 'Magdagdag ng gawain' })[0])
+    fireEvent.click(within(calendarRegion).getByRole('button', { name: 'Magplano para sa araw na ito' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Gumawa ng bagong gawain' })
     expect(within(dialog).getByText('Kategorya')).toBeInTheDocument()
@@ -345,7 +369,7 @@ describe('Daymark task UI', () => {
     expect(screen.queryByText('Active today', { exact: true })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'All' }))
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+    openAllTasks()
     for (const title of ['Active today', 'Completed today', 'Undated', 'Future', 'Past']) {
       expect(screen.getByText(title, { exact: true })).toBeInTheDocument()
     }
@@ -361,6 +385,8 @@ describe('Daymark task UI', () => {
     openDashboard()
     fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: /^Personal/ }))
     expect(screen.getByRole('heading', { name: 'Personal' })).toBeInTheDocument()
+    expect(screen.getByRole('main', { name: 'Daymark task planner' })).toBeInTheDocument()
+    expect(document.querySelector('.category-task-screen')).not.toBeNull()
     expect(screen.getByText('Read handbook', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('Review planning', { exact: true })).not.toBeInTheDocument()
 
@@ -371,7 +397,7 @@ describe('Daymark task UI', () => {
     expect(screen.getByText('Review planning', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('Tidy entryway', { exact: true })).not.toBeInTheDocument()
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+    openAllTasks()
     const search = screen.getByRole('searchbox', { name: 'Search tasks' })
     fireEvent.change(search, { target: { value: 'HANDBOOK' } })
     expect(screen.getByText('Read handbook', { exact: true })).toBeInTheDocument()
@@ -382,7 +408,21 @@ describe('Daymark task UI', () => {
     expect(screen.getByRole('heading', { name: 'No tasks match your search' })).toBeInTheDocument()
   })
 
-  it('combines search with the selected category and status filters', () => {
+  it('keeps the selected category after creating a task from its concept view', () => {
+    renderTasks()
+    chooseCategoryFromDashboard('Work')
+    fireEvent.keyDown(document.body, { key: 'n' })
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task name' }), { target: { value: 'Prepare weekly plan' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Add task$/ }))
+
+    expect(screen.getByRole('heading', { name: 'Work' })).toBeInTheDocument()
+    expect(screen.getByText('Prepare weekly plan', { exact: true })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Up next' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'All tasks' })).not.toBeInTheDocument()
+  })
+
+  it('shows the category concept for named lists while keeping the full planner in All tasks', () => {
     renderTasks([
       makeTask('Prepare outline'),
       makeTask('Prepare report', { completed: true }),
@@ -391,25 +431,33 @@ describe('Daymark task UI', () => {
     openDashboard()
     fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: /^Work/ }))
 
-    const search = screen.getByRole('searchbox', { name: 'Search tasks' })
-    expect(search).toHaveValue('')
+    expect(document.querySelector('.category-concept-screen')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'All categories' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Up next' })).toBeInTheDocument()
+    expect(screen.getByText('1 task left')).toBeInTheDocument()
     expect(screen.getByText('Prepare outline', { exact: true })).toBeInTheDocument()
     expect(screen.getByText('Prepare report', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('Prepare groceries', { exact: true })).not.toBeInTheDocument()
+    expect(screen.queryByRole('searchbox', { name: 'Search tasks' })).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
 
-    fireEvent.change(search, { target: { value: 'PREPARE' } })
-    expect(screen.getByText('Prepare outline', { exact: true })).toBeInTheDocument()
-    expect(screen.getByText('Prepare report', { exact: true })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Active' }))
-    expect(screen.getByText('Prepare outline', { exact: true })).toBeInTheDocument()
-    expect(screen.queryByText('Prepare report', { exact: true })).not.toBeInTheDocument()
+    openAllTasks()
+    expect(screen.getByRole('searchbox', { name: 'Search tasks' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Filter tasks' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Task categories' })).toBeInTheDocument()
+    chooseCategoryFromDashboard('Work')
+    fireEvent.click(screen.getByRole('button', { name: 'All categories' }))
+    expect(screen.getByRole('region', { name: 'Task categories' })).toBeInTheDocument()
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: /^Done/ }))
-    expect(screen.getByText('Prepare report', { exact: true })).toBeInTheDocument()
-    expect(screen.queryByText('Prepare outline', { exact: true })).not.toBeInTheDocument()
-    fireEvent.change(search, { target: { value: '' } })
-    expect(screen.getByText('Prepare report', { exact: true })).toBeInTheDocument()
-    expect(screen.queryByText('Prepare outline', { exact: true })).not.toBeInTheDocument()
+  it('updates category task completion and remaining count from the concept view', () => {
+    renderTasks([makeTask('Finish outline')])
+    chooseCategoryFromDashboard('Work')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Complete “Finish outline”' }))
+    expect(screen.getByRole('heading', { name: 'All done for now' })).toBeInTheDocument()
+    expect(screen.getByText('0 tasks left')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restore “Finish outline”' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('sorts filtered tasks in the selected order without changing stored task records', () => {
@@ -430,13 +478,8 @@ describe('Daymark task UI', () => {
     expectTaskListOrder(['Home task', 'Earlier work', 'Later work', 'Undated work', 'Done work'])
 
     chooseCategoryFromDashboard('Work')
-    const search = screen.getByRole('searchbox', { name: 'Search tasks' })
-    fireEvent.change(search, { target: { value: 'work' } })
-    fireEvent.click(within(screen.getByRole('group', { name: 'Filter tasks' })).getByRole('button', { name: 'Active' }))
-    expectTaskListOrder(['Earlier work', 'Later work', 'Undated work'])
-
-    fireEvent.click(within(screen.getByRole('group', { name: 'Filter tasks' })).getByRole('button', { name: /^Done/ }))
-    expectTaskListOrder(['Done work'])
+    expectTaskListOrder(['Done work', 'Earlier work', 'Later work', 'Undated work'])
+    expect(screen.queryByRole('combobox', { name: 'Sort tasks' })).not.toBeInTheDocument()
     expect(localStorage.getItem(tasksStorageKey)).toBe(storedTasks)
   })
 
@@ -498,9 +541,9 @@ describe('Daymark task UI', () => {
     chooseTodayCategory()
     expect(screen.getByRole('heading', { name: 'No tasks due today' })).toBeInTheDocument()
     chooseCategoryFromDashboard('Work')
-    expect(screen.getByRole('heading', { name: 'No tasks in Work' })).toBeInTheDocument()
+    expect(screen.getByText('No tasks in Work', { exact: true })).toBeInTheDocument()
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+    openAllTasks()
     fireEvent.click(within(screen.getByRole('group', { name: 'Filter tasks' })).getByRole('button', { name: 'Active' }))
     expect(screen.getByRole('heading', { name: 'No active tasks' })).toBeInTheDocument()
     fireEvent.click(within(screen.getByRole('group', { name: 'Filter tasks' })).getByRole('button', { name: /^Done/ }))
@@ -517,7 +560,7 @@ describe('Daymark task UI', () => {
     ])
     expect(screen.getByRole('group', { name: '3 total, 2 active, 1 completed' })).toBeInTheDocument()
     chooseCategoryFromDashboard('Work')
-    expect(screen.getByRole('group', { name: '2 total, 1 active, 1 completed' })).toBeInTheDocument()
+    expect(screen.getByText('1 task left')).toBeInTheDocument()
   })
 
   it('edits task details, plain-text notes, and an independent checklist', () => {
@@ -658,7 +701,7 @@ describe('Daymark task UI', () => {
     if (!calendarDayPanel) throw new Error('Calendar day panel was not rendered')
     expect(within(calendarDayPanel).getByText('Favorite calendar task', { exact: true })).toBeInTheDocument()
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+    openAllTasks()
     fireEvent.click(screen.getByRole('button', { name: 'Add “Favorite calendar task” to favorites' }))
     expect(JSON.parse(localStorage.getItem(tasksStorageKey) || '[]')).toEqual([
       expect.objectContaining({ id: task.id, favorite: true }),
@@ -672,6 +715,19 @@ describe('Daymark task UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Favorites' }))
     expect(screen.getByRole('region', { name: 'Your task list' })).toBeInTheDocument()
     expect(screen.getByText('Another task', { exact: true })).toBeInTheDocument()
+  })
+
+  it('uses the calendar empty-state action instead of a duplicate floating add button', () => {
+    renderTasks()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Calendar' }))
+
+    const calendar = screen.getByRole('main', { name: 'Daymark calendar' })
+    expect(within(calendar).getByRole('button', { name: 'Plan this day' })).toBeInTheDocument()
+    expect(within(calendar).queryByRole('button', { name: 'Add a task' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Your task list' })).queryByRole('button', { name: 'Add a task' })).not.toBeInTheDocument()
+
+    fireEvent.click(within(calendar).getByRole('button', { name: 'Plan this day' }))
+    expect(screen.getByRole('dialog', { name: 'Create New Task' })).toBeInTheDocument()
   })
 
   it('creates a due-today reminder once on open and persists the read state', () => {
@@ -736,7 +792,7 @@ describe('Daymark task UI', () => {
     expect(screen.queryByText('Completed parent', { exact: true })).not.toBeInTheDocument()
     fireEvent.click(within(screen.getByRole('group', { name: 'Filter tasks' })).getByRole('button', { name: 'Active' }))
     expect(screen.getByText('Active parent', { exact: true })).toBeInTheDocument()
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Categories' }))
+    openAllTasks()
     fireEvent.click(within(screen.getByRole('group', { name: 'Filter tasks' })).getByRole('button', { name: /^Done/ }))
     expect(screen.getByText('Completed parent', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('Active parent', { exact: true })).not.toBeInTheDocument()
@@ -771,7 +827,7 @@ describe('Daymark task UI', () => {
 
     render(<App />)
     expect(screen.getByText(/Saved tasks couldn't be loaded/)).toBeInTheDocument()
-    openTaskComposer()
+    fireEvent.keyDown(document.body, { key: 'n' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Task name' }), { target: { value: 'Continue offline' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
 

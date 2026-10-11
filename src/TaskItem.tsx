@@ -1,17 +1,25 @@
 import { useState, type FormEvent } from 'react'
-import { Check, Heart, Info, ListChecks, PencilSimple, Trash, X } from '@phosphor-icons/react'
+import { BookOpenText, Briefcase, Check, Heart, House, Info, ListChecks, PencilSimple, Trash, User, X } from '@phosphor-icons/react'
 import { categories, type Category, type Priority, type Task } from './taskTypes'
 import { getDaysUntilDue, getTaskDueStatus } from './taskUtils'
 import { useLocale } from './locale'
 
 interface TaskItemProps {
   task: Task
+  calendarStyle?: boolean
   onToggle: (task: Task) => void
   onToggleFavorite: (task: Task) => void
   onUpdate: (task: Task) => void
   onDelete: (task: Task) => void
   onOpenDetails: (task: Task, trigger: HTMLButtonElement) => void
 }
+
+const categoryIcons = {
+  Work: Briefcase,
+  Personal: User,
+  Home: House,
+  Learning: BookOpenText,
+} satisfies Record<Category, typeof Briefcase>
 
 function formatDueDate(value: string, daysUntil: number | null, locale: string, t: (text: string) => string) {
   if (daysUntil === 0) return t('Today')
@@ -24,7 +32,7 @@ function formatDueDate(value: string, daysUntil: number | null, locale: string, 
   return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(date)
 }
 
-export function TaskItem({ task, onToggle, onToggleFavorite, onUpdate, onDelete, onOpenDetails }: TaskItemProps) {
+export function TaskItem({ task, calendarStyle = false, onToggle, onToggleFavorite, onUpdate, onDelete, onOpenDetails }: TaskItemProps) {
   const { language, translate: t } = useLocale()
   const intlLocale = language === 'fil' ? 'fil-PH' : 'en'
   const [isEditing, setIsEditing] = useState(false)
@@ -60,6 +68,7 @@ export function TaskItem({ task, onToggle, onToggleFavorite, onUpdate, onDelete,
             : `${dueLabel} - ${t('upcoming')}`
   const subtasks = task.subtasks ?? []
   const completedSubtaskCount = subtasks.filter((subtask) => subtask.completed).length
+  const CategoryIcon = categoryIcons[task.category]
 
   function saveEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -79,7 +88,7 @@ export function TaskItem({ task, onToggle, onToggleFavorite, onUpdate, onDelete,
 
   if (isEditing) {
     return (
-      <li className="task-row editing-row">
+      <li className={`task-row editing-row${calendarStyle ? ' calendar-concept-task' : ''}`}>
         <form className="edit-task-form" onSubmit={saveEdit}>
           <label className="sr-only" htmlFor={`edit-title-${task.id}`}>{t('Task name')}</label>
           <input id={`edit-title-${task.id}`} className="edit-title-input" type="text" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} required />
@@ -98,7 +107,12 @@ export function TaskItem({ task, onToggle, onToggleFavorite, onUpdate, onDelete,
   }
 
   return (
-    <li className={`task-row ${task.completed ? 'is-completed' : ''}`}>
+    <li className={`task-row ${task.completed ? 'is-completed' : ''}${calendarStyle ? ' calendar-concept-task' : ''}`}>
+      {calendarStyle && (
+        <span className={`calendar-task-icon calendar-task-tint-${task.category.toLowerCase()}`}>
+          <CategoryIcon size={17} weight="duotone" aria-hidden="true" />
+        </span>
+      )}
       <button className="task-check" type="button" aria-label={`${t(task.completed ? 'Restore' : 'Complete')} “${task.title}”`} title={t(task.completed ? 'Restore task' : 'Complete task')} aria-pressed={task.completed} onClick={() => onToggle(task)}>
         {task.completed ? <Check size={13} weight="bold" aria-hidden="true" /> : <span className="checkbox-square" aria-hidden="true" />}
       </button>

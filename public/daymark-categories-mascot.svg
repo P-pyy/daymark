@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="176" height="154" viewBox="0 0 176 154" fill="none">
+  <ellipse cx="90" cy="133" rx="67" ry="10" fill="#F4D5E0"/>
+  <circle cx="90" cy="77" r="63" fill="#FCE5ED"/>
+  <path d="M36 63a9 9 0 0 1 9-9h31l9 10h45a9 9 0 0 1 9 9v43a9 9 0 0 1-9 9H45a9 9 0 0 1-9-9V63Z" fill="#F2B9CC" stroke="#9B526D" stroke-width="3"/>
+  <path d="M43 76a8 8 0 0 1 8-8h26l8 9h46a8 8 0 0 1 8 8v31a8 8 0 0 1-8 8H51a8 8 0 0 1-8-8V76Z" fill="#FFF9FB" stroke="#9B526D" stroke-width="3"/>
+  <path d="M70 89c2-3 6-3 8 0m24 0c2-3 6-3 8 0" stroke="#65404F" stroke-linecap="round" stroke-width="3"/>
+  <path d="M81 100c5 5 12 5 17 0" stroke="#C85B80" stroke-linecap="round" stroke-width="3"/>
+  <ellipse cx="69" cy="99" rx="5" ry="3" fill="#F2A7BE"/>
+  <ellipse cx="111" cy="99" rx="5" ry="3" fill="#F2A7BE"/>
+  <path d="m30 44 2.5 6.5L39 53l-6.5 2.5L30 62l-2.5-6.5L21 53l6.5-2.5L30 44Z" fill="#D77B98"/>
+  <path d="m143 37 2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z" fill="#D77B98"/>
+  <path d="m28 104 1.7 4.3L34 110l-4.3 1.7L28 116l-1.7-4.3L22 110l4.3-1.7L28 104Z" fill="#E8A6BB"/>
+</svg>
