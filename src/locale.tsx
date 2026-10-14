@@ -8,6 +8,7 @@ const languageStorageKey = 'daymark.language.preference.v1'
 const filipino: Record<string, string> = {
   'Skip to tasks': 'Lumaktaw sa mga gawain',
   'Today': 'Ngayon',
+  'Getting things ready': 'Inihahanda ang Daymark',
   'Calendar': 'Kalendaryo',
   'Categories': 'Mga kategorya',
   'Profile': 'Profile',

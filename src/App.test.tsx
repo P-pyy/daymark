@@ -7,7 +7,6 @@ vi.mock('./supabaseClient', () => ({ supabase: null }))
 
 const tasksStorageKey = 'daymark.tasks.v1'
 const categoryStorageKey = 'daymark.category.filter.v1'
-const onboardingStorageKey = 'daymark.onboarding.complete.v1'
 const splashStorageKey = 'daymark.splash.seen.v1'
 const themeStorageKey = 'daymark.theme.preference.v1'
 
@@ -44,13 +43,21 @@ function expectTaskListOrder(titles: string[]) {
 function renderTasks(tasks: Task[] = [], category: Category | 'All' | 'Today' = 'All') {
   localStorage.setItem(tasksStorageKey, JSON.stringify(tasks))
   localStorage.setItem(categoryStorageKey, category)
-  localStorage.setItem(onboardingStorageKey, 'complete')
   sessionStorage.setItem(splashStorageKey, 'seen')
   vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'created-task-id') })
-  return render(<App />)
+  const view = render(<App />)
+  const dashboard = screen.getByRole('region', { name: /Task categories|Mga kategorya ng gawain/ })
+  const target = category === 'Today'
+    ? dashboard.querySelector<HTMLButtonElement>('.today-tasks-link:not(.all-tasks-link)')
+    : category === 'All'
+      ? dashboard.querySelector<HTMLButtonElement>('.all-tasks-link')
+      : dashboard.querySelectorAll<HTMLButtonElement>('.category-card')[categories.indexOf(category)]
+  if (!target) throw new Error(`Could not find the dashboard entry for ${category}`)
+  fireEvent.click(target)
+  return view
 }
 
-function startWelcome() {
+function startApp() {
   sessionStorage.setItem(splashStorageKey, 'seen')
   vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'created-task-id') })
   return render(<App />)
@@ -60,7 +67,7 @@ function openDashboard() {
   fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Today' }))
 }
 
-function chooseTodayCategory() {
+function openTasksFromTodayDashboard() {
   fireEvent.click(within(screen.getByRole('region', { name: 'Task categories' })).getByRole('button', { name: "View today's tasks" }))
 }
 
@@ -91,20 +98,35 @@ afterEach(() => {
 })
 
 describe('Daymark task UI', () => {
-  it('shows the welcome and empty task states without stored tasks', () => {
-    startWelcome()
+  it('opens the Today dashboard on a first launch with no stored tasks', () => {
+    startApp()
 
-    expect(screen.getByRole('main', { name: 'Welcome to Daymark' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Get started' }))
-    const categoryRegion = screen.getByRole('region', { name: 'Task categories' })
-    expect(screen.queryByRole('region', { name: 'Morning focus ritual' })).not.toBeInTheDocument()
-    expect(within(categoryRegion).getByRole('button', { name: /^Personal/ })).toBeInTheDocument()
-    expect(within(categoryRegion).queryByRole('button', { name: 'Manage' })).not.toBeInTheDocument()
-    openAllTasks()
+    expect(screen.getByRole('main', { name: 'Choose a task category' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Task categories' })).toBeInTheDocument()
+    expect(screen.queryByRole('main', { name: 'Welcome to Daymark' })).not.toBeInTheDocument()
+  })
 
-    expect(screen.getByRole('main', { name: 'Daymark task planner' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBeInTheDocument()
-    expect(screen.queryByRole('navigation', { name: 'Task categories' })).not.toBeInTheDocument()
+  it('opens the Today dashboard for returning users even when Today was the last task-list scope', () => {
+    localStorage.setItem(tasksStorageKey, JSON.stringify([makeTask('Due today', { dueDate: dateKey() })]))
+    localStorage.setItem(categoryStorageKey, 'Today')
+    sessionStorage.setItem(splashStorageKey, 'seen')
+
+    render(<App />)
+
+    expect(screen.getByRole('main', { name: 'Choose a task category' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Task categories' })).toBeInTheDocument()
+  })
+
+  it('shows a branded loading transition when navigating between screens', () => {
+    renderTasks()
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Calendar' }))
+
+    expect(screen.getByRole('status', { name: 'Getting things ready' })).toBeInTheDocument()
+    expect(screen.getByRole('main', { name: 'Daymark calendar' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('status', { name: 'Getting things ready' }).querySelector('img')).toHaveAttribute('src', '/daymark-loading-calendar.svg')
+    expect(screen.getByRole('status', { name: 'Getting things ready' }).querySelectorAll('.page-transition-dots i')).toHaveLength(3)
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
   })
 
   it('uses one primary add-task action on the Today dashboard', () => {
@@ -140,8 +162,8 @@ describe('Daymark task UI', () => {
     expect(within(profile).queryByText(/timezone/i)).not.toBeInTheDocument()
     expect(settingsButton).toHaveAttribute('aria-current', 'page')
     expect(navigation.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+      'Today',
       'Calendar',
-      'Favorites',
       'Notifications',
       'Profile',
     ])
@@ -150,14 +172,8 @@ describe('Daymark task UI', () => {
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
     expect(localStorage.getItem(themeStorageKey)).toBe('dark')
 
-    fireEvent.click(navigation.getByRole('button', { name: 'Favorites' }))
-    const favoritesRegion = screen.getByRole('region', { name: 'Favorite tasks' })
-    const favoritesThemeToggle = favoritesRegion.querySelector<HTMLButtonElement>('.tasks-screen .theme-toggle')
-    expect(favoritesThemeToggle).not.toBeNull()
-    if (!favoritesThemeToggle) throw new Error('The Favorites screen theme toggle is missing.')
-    fireEvent.click(favoritesThemeToggle)
-    expect(document.documentElement).toHaveAttribute('data-theme', 'light')
-    expect(localStorage.getItem(themeStorageKey)).toBe('light')
+    fireEvent.click(navigation.getByRole('button', { name: 'Today' }))
+    expect(screen.getByRole('region', { name: 'Task categories' })).toBeInTheDocument()
 
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Profile' }))
     const settingsNavigation = within(screen.getByRole('navigation', { name: 'Primary' }))
@@ -271,8 +287,7 @@ describe('Daymark task UI', () => {
   })
 
   it('creates a task from the composer with the existing schema and Today default date', () => {
-    startWelcome()
-    fireEvent.click(screen.getByRole('button', { name: 'Get started' }))
+    startApp()
     openDashboardComposer()
 
     const dialog = screen.getByRole('dialog', { name: 'Create New Task' })
@@ -337,7 +352,7 @@ describe('Daymark task UI', () => {
     ]))
   })
 
-  it('filters Today by local due date and preserves All/Active/Done semantics', () => {
+  it('opens the existing All tasks list from the Today dashboard', () => {
     const tasks = [
       makeTask('Active today', { dueDate: dateKey() }),
       makeTask('Completed today', { dueDate: dateKey(), completed: true, category: 'Personal' }),
@@ -350,26 +365,9 @@ describe('Daymark task UI', () => {
     expect(screen.getByText('Active today', { exact: true })).toBeInTheDocument()
     expect(screen.getByText('Undated', { exact: true })).toBeInTheDocument()
     openDashboard()
-    chooseTodayCategory()
-    expect(screen.getByRole('heading', { name: 'Today', level: 1 })).toBeInTheDocument()
-    expect(screen.getByText('Active today', { exact: true })).toBeInTheDocument()
-    expect(screen.getByText('Completed today', { exact: true })).toBeInTheDocument()
-    const dueToday = screen.getByLabelText('Today - due today')
-    expect(dueToday.tagName).toBe('TIME')
-    expect(dueToday).toHaveAttribute('dateTime', dateKey())
-    expect(screen.queryByText('Undated', { exact: true })).not.toBeInTheDocument()
-    expect(screen.queryByText('Future', { exact: true })).not.toBeInTheDocument()
-    expect(screen.queryByText('Past', { exact: true })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Active' }))
-    expect(screen.getByText('Active today', { exact: true })).toBeInTheDocument()
-    expect(screen.queryByText('Completed today', { exact: true })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /^Done/ }))
-    expect(screen.getByText('Completed today', { exact: true })).toBeInTheDocument()
-    expect(screen.queryByText('Active today', { exact: true })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'All' }))
-    openAllTasks()
+    openTasksFromTodayDashboard()
+    expect(screen.getByRole('region', { name: 'Your task list' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'All tasks', level: 1 })).toBeInTheDocument()
     for (const title of ['Active today', 'Completed today', 'Undated', 'Future', 'Past']) {
       expect(screen.getByText(title, { exact: true })).toBeInTheDocument()
     }
@@ -538,8 +536,8 @@ describe('Daymark task UI', () => {
     expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBeInTheDocument()
 
     openDashboard()
-    chooseTodayCategory()
-    expect(screen.getByRole('heading', { name: 'No tasks due today' })).toBeInTheDocument()
+    openTasksFromTodayDashboard()
+    expect(screen.getByRole('heading', { name: 'No tasks yet' })).toBeInTheDocument()
     chooseCategoryFromDashboard('Work')
     expect(screen.getByText('No tasks in Work', { exact: true })).toBeInTheDocument()
 
@@ -708,11 +706,12 @@ describe('Daymark task UI', () => {
       expect.objectContaining({ title: 'Another task', favorite: false }),
     ])
 
-    fireEvent.click(screen.getByRole('button', { name: 'Favorites' }))
+    const favoritesFilter = screen.getByRole('button', { name: 'Favorites' })
+    fireEvent.click(favoritesFilter)
     const favoritesRegion = screen.getByRole('region', { name: 'Favorite tasks' })
     expect(within(favoritesRegion).getByText('Favorite calendar task', { exact: true })).toBeInTheDocument()
     expect(within(favoritesRegion).queryByText('Another task', { exact: true })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Favorites' }))
+    fireEvent.click(favoritesFilter)
     expect(screen.getByRole('region', { name: 'Your task list' })).toBeInTheDocument()
     expect(screen.getByText('Another task', { exact: true })).toBeInTheDocument()
   })
@@ -781,15 +780,14 @@ describe('Daymark task UI', () => {
     expect(screen.getByRole('heading', { name: 'No unread notifications' })).toBeInTheDocument()
   })
 
-  it('keeps Today and status filters based on parent task fields', () => {
+  it('keeps status filters based on parent task fields', () => {
     renderTasks([
       makeTask('Active parent', { dueDate: dateKey(), subtasks: [{ id: 'done-child', title: 'Done child', completed: true }] }),
       makeTask('Completed parent', { dueDate: dateKey(1), completed: true, subtasks: [{ id: 'open-child', title: 'Open child', completed: false }] }),
     ])
-    openDashboard()
-    chooseTodayCategory()
+    openAllTasks()
     expect(screen.getByText('Active parent', { exact: true })).toBeInTheDocument()
-    expect(screen.queryByText('Completed parent', { exact: true })).not.toBeInTheDocument()
+    expect(screen.getByText('Completed parent', { exact: true })).toBeInTheDocument()
     fireEvent.click(within(screen.getByRole('group', { name: 'Filter tasks' })).getByRole('button', { name: 'Active' }))
     expect(screen.getByText('Active parent', { exact: true })).toBeInTheDocument()
     openAllTasks()
@@ -821,7 +819,6 @@ describe('Daymark task UI', () => {
     const malformed = '{not valid JSON'
     localStorage.setItem(tasksStorageKey, malformed)
     localStorage.setItem(categoryStorageKey, 'Work')
-    localStorage.setItem(onboardingStorageKey, 'complete')
     sessionStorage.setItem(splashStorageKey, 'seen')
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
 

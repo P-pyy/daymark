@@ -9,9 +9,11 @@
 .calendar-page.calendar-concept {
   position: relative;
   width: min(100%, 430px);
-  min-height: 100dvh;
+  min-height: calc(100dvh - 72px - env(safe-area-inset-bottom));
   margin: 0 auto;
-  padding-bottom: calc(82px + env(safe-area-inset-bottom));
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: #fffafc;
   box-shadow: 0 0 40px rgb(104 52 72 / 8%);
@@ -121,8 +123,10 @@
 }
 
 .calendar-concept-main {
+  flex: 1;
   padding: 8px 13px 20px;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 11px;
 }
 
@@ -550,6 +554,9 @@
 }
 
 .calendar-concept-empty-day {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   padding: 12px 13px 14px;
   border: 1px solid #efdce4;
   border-radius: 17px;
@@ -558,6 +565,7 @@
 }
 
 .calendar-concept-empty-state {
+  flex: 1;
   min-height: 188px;
   padding: 7px 5px 2px;
   display: flex;

@@ -5,8 +5,8 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#fff9e9",
-  "theme_color": "#ffe24b",
+  "background_color": "#fff4f8",
+  "theme_color": "#fff4f8",
   "icons": [
     {
       "src": "/daymark-icon-192.png",

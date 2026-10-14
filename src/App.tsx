@@ -17,7 +17,7 @@ import {
   User,
   X,
 } from '@phosphor-icons/react'
-import { Bell as ProfileBell, CalendarDays as ProfileCalendar, Heart as ProfileHeart, User as ProfileUser } from 'lucide-react'
+import { Bell as ProfileBell, CalendarDays as ProfileCalendar, User as ProfileUser } from 'lucide-react'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import { AccountDialog, type AccountSyncState } from './AccountDialog'
 import { TaskComposerDialog } from './TaskComposerDialog'
@@ -49,7 +49,6 @@ type AppNavigation = 'today' | 'calendar' | 'search' | 'notifications' | 'profil
 const splashStorageKey = 'daymark.splash.seen.v1'
 const themeStorageKey = 'daymark.theme.preference.v1'
 const categoryStorageKey = 'daymark.category.filter.v1'
-const onboardingStorageKey = 'daymark.onboarding.complete.v1'
 
 function shouldShowSplash() {
   try {
@@ -76,16 +75,6 @@ function readCategoryFilter(): CategoryFilter {
       : 'Personal'
   } catch {
     return 'Personal'
-  }
-}
-
-function readInitialScreen(hasTasks: boolean): AppScreen {
-  try {
-    return localStorage.getItem(onboardingStorageKey) === 'complete' || hasTasks
-      ? 'tasks'
-      : 'welcome'
-  } catch {
-    return 'welcome'
   }
 }
 
@@ -176,7 +165,10 @@ function AppContent() {
   })
   const [showSplash, setShowSplash] = useState(shouldShowSplash)
   const [splashLeaving, setSplashLeaving] = useState(false)
-  const [screen, setScreen] = useState<AppScreen>(() => readInitialScreen(storedTaskState.tasks.length > 0))
+  const [screen, setScreen] = useState<AppScreen>('categories')
+  const [pageLoading, setPageLoading] = useState(false)
+  const [pageLoadingLeaving, setPageLoadingLeaving] = useState(false)
+  const pageTransitionTimersRef = useRef<number[]>([])
   const [activeNavigation, setActiveNavigation] = useState<AppNavigation>('today')
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference)
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(getSystemTheme)
@@ -695,7 +687,7 @@ function AppContent() {
     document.documentElement.dataset.theme = theme
     document.documentElement.style.colorScheme = theme
     storeThemePreference(themePreference)
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#262720' : '#fcfaf6')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#262720' : '#fff4f8')
   }, [theme, themePreference])
 
   useEffect(() => {
@@ -712,6 +704,10 @@ function AppContent() {
       window.clearTimeout(hideTimer)
     }
   }, [showSplash])
+
+  useEffect(() => () => {
+    pageTransitionTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+  }, [])
 
   const now = new Date()
   const todayDateKey = getLocalDateKey(now)
@@ -779,18 +775,31 @@ function AppContent() {
     setComposerOpen(false)
   }
 
+  function navigateTo(nextScreen: AppScreen) {
+    if (screen === nextScreen) return
+
+    pageTransitionTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    pageTransitionTimersRef.current = []
+
+    const shouldAnimate = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    setPageLoading(shouldAnimate)
+    setPageLoadingLeaving(false)
+    if (shouldAnimate) {
+      pageTransitionTimersRef.current = [
+        window.setTimeout(() => setPageLoadingLeaving(true), 340),
+        window.setTimeout(() => setPageLoading(false), 520),
+      ]
+    }
+    setScreen(nextScreen)
+  }
+
   function openTodayDashboard() {
     setFavoriteOnly(false)
     setCategoryFilter('Today')
     setFilter('All')
     setQuery('')
-    setScreen('categories')
+    navigateTo('categories')
     setActiveNavigation('today')
-    try {
-      localStorage.setItem(onboardingStorageKey, 'complete')
-    } catch {
-      return
-    }
   }
 
   function selectCategory(category: CategoryFilter) {
@@ -798,42 +807,28 @@ function AppContent() {
     setCategoryFilter(category)
     setFilter('All')
     setQuery('')
-    setScreen('tasks')
+    navigateTo('tasks')
     setActiveNavigation('today')
-    try {
-      localStorage.setItem(onboardingStorageKey, 'complete')
-    } catch {
-      return
-    }
   }
 
   function openCalendar() {
-    setScreen('calendar')
+    navigateTo('calendar')
     setActiveNavigation('calendar')
     setSelectedCalendarDate(todayDateKey)
   }
 
-  function openFavorites() {
-    setFavoriteOnly(true)
-    setCategoryFilter('All')
-    setFilter('All')
-    setQuery('')
-    setScreen('tasks')
-    setActiveNavigation('today')
-  }
-
   function openNotifications() {
     setActiveNavigation('notifications')
-    setScreen('notifications')
+    navigateTo('notifications')
   }
 
   function openNotificationSettings() {
     setActiveNavigation('notifications')
-    setScreen('notification-settings')
+    navigateTo('notification-settings')
   }
 
   function openProfile() {
-    setScreen('profile')
+    navigateTo('profile')
     setActiveNavigation('profile')
   }
 
@@ -988,6 +983,7 @@ function AppContent() {
       <main
         className={`app-stage flow-${screen}${screen === 'calendar' ? ' calendar-concept-stage' : ''}`}
         id="main-content"
+        aria-busy={pageLoading}
         aria-label={screen === 'welcome' ? t('Welcome to Daymark')
           : screen === 'categories' ? t('Choose a task category')
             : screen === 'calendar' ? t('Daymark calendar')
@@ -1022,7 +1018,7 @@ function AppContent() {
                   <p className="screen-greeting">{t('A fresh start')}</p>
                   <h2>{t('Today')}</h2>
                   <p className="today-subtitle">{t('You have')} <strong>{todayActiveCount} {t(todayActiveCount === 1 ? 'task' : 'tasks')}</strong> {t('due today')}</p>
-                  <button className="today-tasks-link" type="button" onClick={() => selectCategory('Today')}>
+                  <button className="today-tasks-link" type="button" onClick={() => selectCategory('All')}>
                     {t("View today's tasks")}
                   </button>
                 </div>
@@ -1380,23 +1376,16 @@ function AppContent() {
             onOpenNotifications={openNotifications}
           />
         )}
-        {screen === 'profile' || screen === 'notification-settings' ? (
+        {screen !== 'welcome' && (
           <nav
-            className={`bottom-tab-bar profile-reference-nav${screen === 'notification-settings' ? ' notifications-reference-nav' : ''}`}
+            className={`bottom-tab-bar${screen === 'notification-settings' ? ' notifications-reference-nav' : ''}`}
             aria-label={t('Primary')}
             inert={modalOpen}
           >
+            <button type="button" className={activeNavigation === 'today' ? 'is-current' : ''} aria-current={activeNavigation === 'today' ? 'page' : undefined} onClick={openTodayDashboard}><Sun size={21} aria-hidden="true" /><span>{t('Today')}</span></button>
             <button type="button" className={activeNavigation === 'calendar' ? 'is-current' : ''} aria-current={activeNavigation === 'calendar' ? 'page' : undefined} onClick={openCalendar}><ProfileCalendar size={20} aria-hidden="true" /><span>{t('Calendar')}</span></button>
-            <button type="button" onClick={openFavorites}><ProfileHeart size={20} aria-hidden="true" /><span>{t('Favorites')}</span></button>
             <button type="button" className={activeNavigation === 'notifications' ? 'is-current' : ''} aria-current={activeNavigation === 'notifications' ? 'page' : undefined} onClick={openNotifications}><ProfileBell size={20} aria-hidden="true" /><span>{t('Notifications')}</span></button>
             <button type="button" className={activeNavigation === 'profile' ? 'is-current' : ''} aria-current={activeNavigation === 'profile' ? 'page' : undefined} onClick={openProfile}><ProfileUser size={20} aria-hidden="true" /><span>{t('Profile')}</span></button>
-          </nav>
-        ) : screen !== 'welcome' && (
-          <nav className="bottom-tab-bar" aria-label={t('Primary')} inert={modalOpen}>
-            <button type="button" className={activeNavigation === 'today' ? 'is-current' : ''} aria-current={activeNavigation === 'today' ? 'page' : undefined} onClick={openTodayDashboard}><Sun size={21} aria-hidden="true" /><span>{t('Today')}</span></button>
-            <button type="button" className={activeNavigation === 'calendar' ? 'is-current' : ''} aria-current={activeNavigation === 'calendar' ? 'page' : undefined} onClick={openCalendar}><CalendarBlank size={21} aria-hidden="true" /><span>{t('Calendar')}</span></button>
-            <button type="button" className={activeNavigation === 'notifications' ? 'is-current' : ''} aria-current={activeNavigation === 'notifications' ? 'page' : undefined} onClick={openNotifications}><Bell size={21} aria-hidden="true" /><span>{t('Notifications')}</span></button>
-            <button type="button" className={activeNavigation === 'profile' ? 'is-current' : ''} aria-current={activeNavigation === 'profile' ? 'page' : undefined} onClick={openProfile}><User size={21} aria-hidden="true" /><span>{t('Profile')}</span></button>
           </nav>
         )}
         {composerOpen && (
@@ -1430,6 +1419,14 @@ function AppContent() {
         )}
       </main>
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
+      {pageLoading && (
+        <div className={`page-transition${pageLoadingLeaving ? ' is-leaving' : ''}`} role="status" aria-live="polite" aria-label={t('Getting things ready')}>
+          <div className="page-transition-animation" aria-hidden="true">
+            <img src="/daymark-loading-calendar.svg" alt="" />
+            <span className="page-transition-dots"><i /><i /><i /></span>
+          </div>
+        </div>
+      )}
       {showSplash && (
         <div className={`launch-splash ${splashLeaving ? 'is-leaving' : ''}`} role="status" aria-live="polite" aria-label={t('Opening Daymark')}>
           <div className="launch-lockup">
