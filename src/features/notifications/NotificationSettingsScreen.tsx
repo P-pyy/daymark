@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Bell, ChevronLeft } from 'lucide-react'
-import { useLocale } from './locale'
+import { useLocale } from '../../shared/locale'
 
 interface NotificationSettingsScreenProps {
   permission: NotificationPermission | 'unsupported'

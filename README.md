@@ -26,23 +26,23 @@ Daymark is a calm, local-first task manager for organizing everyday work. Create
 
 ```text
 daymark/
-├── public/                 Static icons and brand assets
+├── public/                 App icons, brand assets, and web manifest
 ├── src/
-│   ├── App.tsx             Application screens and task workflows
-│   ├── AccountDialog.tsx   Google profile, sign-in, and sync status
-│   ├── SettingsDialog.tsx  Appearance and profile settings
-│   ├── TaskComposer.tsx    New-task form
-│   ├── TaskDetailsDialog.tsx Task details, notes, and checklist
-│   ├── TaskItem.tsx        Task row and inline editing
-│   ├── taskStorage.ts      Browser task persistence
-│   ├── taskSync.ts         Cloud sync and offline deletion queue
-│   ├── taskTypes.ts        Task and category types
-│   ├── taskUtils.ts        Date and sorting helpers
-│   └── TodoReference.css   Application styles
+│   ├── App.tsx             App shell and navigation
+│   ├── App.css             Global application styles
+│   ├── features/
+│   │   ├── tasks/          Task UI, local storage, sync, types, and tests
+│   │   ├── calendar/       Calendar screen, date helpers, and tests
+│   │   ├── notifications/  Reminder screens, preferences, and tests
+│   │   └── profile/        Profile screen, account dialog, and tests
+│   ├── shared/             Locale provider and Supabase client
+│   ├── assets/             Imported app illustrations
+│   └── test/               Shared test setup
 ├── supabase/
 │   ├── functions/          Server-side sign-in email function
-│   └── migrations/         Account-owned task schema and policies
-├── package.json            Dependencies and commands
+│   └── migrations/         Hosted task schema and policies
+├── package.json            Dependencies and scripts
+├── package-lock.json       Locked npm dependency tree
 └── vite.config.ts          Vite configuration
 ```
 
@@ -95,6 +95,50 @@ npm run preview   # Preview the production build
 npm run lint      # Run ESLint
 npm run test:run  # Run the test suite once
 ```
+
+## Docker
+
+The production Compose service builds the Vite app from the npm lockfile and serves its static output with unprivileged Nginx on port 8080. The separate development Compose file runs Vite with source hot reload on port 5174. Daymark tasks remain in browser storage; optional authentication, Postgres, Realtime, and the sign-in email Edge Function remain hosted by Supabase. Docker does not deploy or replace those services.
+
+Docker Desktop must be running. To enable optional Supabase features, configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` using `.env.example` as a template. They are public browser settings embedded in the frontend build, not server secrets. Without them, local task features still work and account features remain unavailable. Never place a Supabase service-role key or Resend key in this file or the Docker build.
+
+Run the production container from PowerShell:
+
+```powershell
+docker compose --env-file .env.local -f compose.yaml up --build -d
+```
+
+If you do not have `.env.local`, start without `--env-file .env.local`; hosted Supabase features will be unconfigured unless the two public settings are otherwise supplied to Compose.
+
+Run the development container with hot reload instead:
+
+```powershell
+docker compose --env-file .env.local -f compose.dev.yaml up --build -d
+```
+
+Useful Docker Desktop / PowerShell commands:
+
+```powershell
+# Open the app
+Start-Process http://localhost:8080 # Production
+Start-Process http://localhost:5174 # Development
+
+# View status and health, or follow logs
+docker compose -f compose.yaml ps
+docker compose -f compose.yaml logs -f daymark
+docker compose -f compose.dev.yaml ps
+docker compose -f compose.dev.yaml logs -f daymark-dev
+
+# Stop either setup; this does not delete browser task data
+docker compose -f compose.yaml down
+docker compose -f compose.dev.yaml down
+
+# Rebuild after dependency, source, or configuration changes
+docker compose -f compose.yaml up --build -d
+docker compose -f compose.dev.yaml up --build --renew-anon-volumes -d
+```
+
+The production container exposes only `127.0.0.1` on the host by default. Change `DAYMARK_PORT` or `DAYMARK_DEV_PORT` in `.env.local` to use another host port. For Docker-based Google sign-in tests, add `http://localhost:5174` to the Supabase Auth redirect URLs and the hosted Edge Function's `APP_ORIGIN`; configure the production app origin there before deploying. For an empty local task list, use a fresh browser profile or clear this site's storage in browser settings; task data is not stored in a Docker volume. No database migration command is needed for Docker: apply Supabase migrations with the Supabase CLI as described above. `docker compose down` preserves Docker-managed data; this setup defines no database volume, and `down -v` is unnecessary.
 
 ## Data and privacy
 

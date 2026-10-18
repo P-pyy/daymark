@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { SignOut, X } from '@phosphor-icons/react'
 import type { User } from '@supabase/supabase-js'
-import { useLocale } from './locale'
+import { useLocale } from '../../shared/locale'
 
 export type AccountSyncState = 'idle' | 'syncing' | 'synced' | 'offline' | 'error'
 

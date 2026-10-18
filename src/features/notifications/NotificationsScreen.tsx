@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Bell, CheckCircle, GearSix } from '@phosphor-icons/react'
 import type { DueNotification } from './dueNotifications'
-import { useLocale } from './locale'
+import { useLocale } from '../../shared/locale'
 
 interface NotificationsScreenProps {
   notifications: DueNotification[]

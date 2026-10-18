@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Json } from './supabaseClient'
+import type { Json } from '../../shared/supabaseClient'
 import type { Task } from './taskTypes'
 import {
   addTaskTombstones,

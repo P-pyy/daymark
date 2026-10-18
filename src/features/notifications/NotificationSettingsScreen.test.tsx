@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { LocaleProvider } from './locale'
+import { LocaleProvider } from '../../shared/locale'
 import { NotificationSettingsScreen } from './NotificationSettingsScreen'
 
 function renderSettings(overrides: Partial<React.ComponentProps<typeof NotificationSettingsScreen>> = {}) {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Check, Plus, Trash, X } from '@phosphor-icons/react'
 import { categories, MAX_SUBTASK_TITLE_LENGTH, MAX_TASK_NOTES_LENGTH, type Category, type Priority, type Subtask, type Task } from './taskTypes'
-import { useLocale } from './locale'
+import { useLocale } from '../../shared/locale'
 
 interface TaskDetailsDialogProps {
   task: Task

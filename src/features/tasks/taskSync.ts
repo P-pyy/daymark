@@ -1,6 +1,6 @@
 import type { Task } from './taskTypes'
 import { isTask, normalizeTask } from './taskStorage'
-import { supabase, type Json } from './supabaseClient'
+import { supabase, type Json } from '../../shared/supabaseClient'
 
 const tombstonesStorageKey = 'daymark.task-deletions.v1'
 

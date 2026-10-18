@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { BookOpen, Briefcase, HouseLine, Plus, User, X } from '@phosphor-icons/react'
+import { BookOpen, Briefcase, HouseLine, Plus, User } from '@phosphor-icons/react'
 import { categories, type Category, type Priority } from './taskTypes'
-import { useLocale } from './locale'
+import { useLocale } from '../../shared/locale'
 
 const categoryIcons = {
   Work: Briefcase,
@@ -39,11 +39,6 @@ export function TaskComposer({ onAdd, onClose, initialCategory = 'Work', initial
           <h2 className="composer-heading" id="composer-heading">{t('Create New Task')}</h2>
           <span className="composer-badge">{t('Quick Add')}</span>
         </div>
-        {onClose && (
-          <button className="composer-close" type="button" aria-label={t('Close add task form')} onClick={onClose}>
-            <X size={16} aria-hidden="true" />
-          </button>
-        )}
       </div>
       <div className="composer-input-row">
         <label className="sr-only" htmlFor="new-task-title">{t('Task name')}</label>

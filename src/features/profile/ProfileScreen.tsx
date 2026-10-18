@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import '@fontsource/poppins/latin-400.css'
 import '@fontsource/poppins/latin-500.css'
 import '@fontsource/poppins/latin-600.css'
@@ -11,7 +11,8 @@ import '@fontsource/poppins/latin-ext-700.css'
 import '@fontsource/poppins/latin-ext-800.css'
 import { Bell, Camera, ChevronDown, ChevronLeft, LogOut, MessageSquare, Pencil, UserRound, X } from 'lucide-react'
 import type { AccountSyncState } from './AccountDialog'
-import { useLocale, type Language } from './locale'
+import { FeedbackDialog } from './FeedbackDialog'
+import { useLocale, type Language } from '../../shared/locale'
 import { readProfilePreferences, writeProfilePreferences, type ProfilePreferences } from './profilePreferences'
 import unitedKingdomFlag from 'flag-icons/flags/4x3/gb.svg'
 import philippinesFlag from 'flag-icons/flags/4x3/ph.svg'
@@ -64,6 +65,8 @@ export function ProfileScreen({
   const { language, setLanguage, storageError: languageStorageError, translate: t } = useLocale()
   const [storedProfile] = useState(() => readProfilePreferences(profileScope))
   const [profilePreferences, setProfilePreferences] = useState<ProfilePreferences | null>(storedProfile.preferences)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const feedbackTriggerRef = useRef<HTMLButtonElement>(null)
   const [optimisticAccountName, setOptimisticAccountName] = useState<{
     source: string | null
     value: string
@@ -81,6 +84,7 @@ export function ProfileScreen({
   const [notificationBusy, setNotificationBusy] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
+  const closeFeedback = useCallback(() => setFeedbackOpen(false), [])
   const canSignOut = syncState === 'synced'
   const savedPhoto = profilePreferences && Object.prototype.hasOwnProperty.call(profilePreferences, 'avatarDataUrl')
     ? profilePreferences.avatarDataUrl ?? null
@@ -203,10 +207,6 @@ export function ProfileScreen({
       : notificationPermission === 'unsupported'
         ? t('Not available in this browser')
         : t('Optional browser notifications')
-  const feedbackUrl = new URL('https://github.com/P-pyy/daymark/issues/new')
-  feedbackUrl.searchParams.set('title', t('Feedback for Daymark'))
-  feedbackUrl.searchParams.set('body', t('Describe your idea or the problem you encountered.'))
-
   return (
     <section className="profile-page" aria-labelledby="profile-heading">
       <header className={`profile-settings-header${editing ? ' is-editing' : ''}`}>
@@ -319,7 +319,7 @@ export function ProfileScreen({
         </button>
       </section>
 
-        <section className="profile-settings-section profile-select-section" aria-labelledby="profile-language-heading">
+        <section className="profile-settings-section profile-select-section profile-language-section" aria-labelledby="profile-language-heading">
           <div className="profile-setting-copy">
             <h2 id="profile-language-heading">{t('Language')}</h2>
             <p>{t('Choose your preferred language for Daymark.')}</p>
@@ -387,11 +387,16 @@ export function ProfileScreen({
         <section className="profile-settings-section profile-action-section" aria-labelledby="profile-feedback-heading">
           <div className="profile-setting-copy">
             <h2 id="profile-feedback-heading">{t('Send feedback')}</h2>
-            <p className="profile-row-description">{t('Report a bug or share an idea with us.')}</p>
+            <p className="profile-row-description">{t('Report a bug or share an idea with me.')}</p>
           </div>
-          <a className="profile-row-action" href={feedbackUrl.toString()} target="_blank" rel="noreferrer">
+          <button
+            ref={feedbackTriggerRef}
+            className="profile-row-action"
+            type="button"
+            onClick={() => setFeedbackOpen(true)}
+          >
             <MessageSquare size={16} aria-hidden="true" /> {t('Feedback')}
-          </a>
+          </button>
         </section>
       </div>
       <div className="profile-signout-wrap">
@@ -420,6 +425,7 @@ export function ProfileScreen({
       </div>
       </>
       )}
+      {feedbackOpen && <FeedbackDialog onClose={closeFeedback} returnFocusRef={feedbackTriggerRef} />}
     </section>
   )
 }

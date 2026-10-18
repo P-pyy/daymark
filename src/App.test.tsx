@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { categories, type Category, type Task } from './taskTypes'
+import { categories, type Category, type Task } from './features/tasks/taskTypes'
 
-vi.mock('./supabaseClient', () => ({ supabase: null }))
+vi.mock('./shared/supabaseClient', () => ({ supabase: null }))
 
 const tasksStorageKey = 'daymark.tasks.v1'
 const categoryStorageKey = 'daymark.category.filter.v1'
@@ -115,6 +115,20 @@ describe('Daymark task UI', () => {
 
     expect(screen.getByRole('main', { name: 'Choose a task category' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Task categories' })).toBeInTheDocument()
+  })
+
+  it('returns the Today dashboard scroll position to the top when reopening the tab', () => {
+    startApp()
+    const dashboard = screen.getByRole('region', { name: 'Task categories' })
+    const scrollContainer = dashboard.closest<HTMLElement>('.category-device')
+    if (!scrollContainer) throw new Error('Today dashboard scroll container is missing')
+    scrollContainer.scrollTop = 48
+
+    const navigation = within(screen.getByRole('navigation', { name: 'Primary' }))
+    fireEvent.click(navigation.getByRole('button', { name: 'Calendar' }))
+    fireEvent.click(navigation.getByRole('button', { name: 'Today' }))
+
+    expect(scrollContainer.scrollTop).toBe(0)
   })
 
   it('shows a branded loading transition when navigating between screens', () => {
@@ -267,23 +281,27 @@ describe('Daymark task UI', () => {
     const dialog = screen.getByRole('dialog', { name: 'Create New Task' })
     const titleInput = within(dialog).getByRole('textbox', { name: 'Task name' })
     const addButton = within(dialog).getByRole('button', { name: 'Add task' })
-    const closeButton = within(dialog).getByRole('button', { name: 'Close add task form' })
     const trigger = within(screen.getByRole('region', { name: 'Your task list' })).getByRole('button', { name: 'Add a task' })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     expect(screen.getByRole('region', { name: 'Your task list' })).toHaveAttribute('inert')
     expect(screen.getByRole('navigation', { name: 'Primary' })).toHaveAttribute('inert')
+    expect(within(dialog).queryByRole('button', { name: 'Close add task form' })).not.toBeInTheDocument()
     expect(titleInput).toHaveFocus()
 
     fireEvent.change(titleInput, { target: { value: 'Focus check' } })
-    closeButton.focus()
+    titleInput.focus()
     fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
     expect(addButton).toHaveFocus()
     fireEvent.keyDown(window, { key: 'Tab' })
-    expect(closeButton).toHaveFocus()
+    expect(titleInput).toHaveFocus()
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
+
+    openTaskComposer()
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Create New Task' })).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('creates a task from the composer with the existing schema and Today default date', () => {

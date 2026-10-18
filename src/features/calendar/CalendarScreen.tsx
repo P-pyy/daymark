@@ -4,9 +4,9 @@ import '@fontsource/poppins/500.css'
 import '@fontsource/poppins/600.css'
 import '@fontsource/poppins/700.css'
 import { formatCalendarMonth, getCalendarDays } from './calendarUtils'
-import { TaskItem } from './TaskItem'
-import type { Task } from './taskTypes'
-import { useLocale } from './locale'
+import { TaskItem } from '../tasks/TaskItem'
+import type { Task } from '../tasks/taskTypes'
+import { useLocale } from '../../shared/locale'
 import './calendar-screen.css'
 
 interface CalendarScreenProps {

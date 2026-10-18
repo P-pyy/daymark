@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { BookOpenText, Briefcase, Check, Heart, House, Info, ListChecks, PencilSimple, Trash, User, X } from '@phosphor-icons/react'
 import { categories, type Category, type Priority, type Task } from './taskTypes'
 import { getDaysUntilDue, getTaskDueStatus } from './taskUtils'
-import { useLocale } from './locale'
+import { useLocale } from '../../shared/locale'
 
 interface TaskItemProps {
   task: Task

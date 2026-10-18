@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProfileScreen } from './ProfileScreen'
-import { LocaleProvider } from './locale'
+import { LocaleProvider } from '../../shared/locale'
 
 const profileKey = 'daymark.profile.v1.local'
 
@@ -88,6 +88,68 @@ describe('ProfileScreen Google account controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
 
     expect(onOpenNotifications).toHaveBeenCalledOnce()
+  })
+
+  it('opens and cancels the feedback sheet, returning focus to its trigger', () => {
+    renderProfile()
+    const trigger = screen.getByRole('button', { name: 'Feedback' })
+
+    fireEvent.click(trigger)
+    expect(screen.getByRole('dialog', { name: 'Send feedback' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Bug' })).toBeChecked()
+    expect(screen.getByText('Report a bug, share an idea, or tell me how I can make Daymark better.')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Your message' })).toHaveAttribute('placeholder', 'Tell me a little more...')
+    expect(document.querySelector('.feedback-overlay')?.parentElement).toBe(document.body)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Send feedback' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('closes the feedback sheet with Escape', () => {
+    renderProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog', { name: 'Send feedback' })).not.toBeInTheDocument()
+  })
+
+  it('opens a GitHub issue draft with the selected category, title, and message', () => {
+    renderProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Idea' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Add a weekly & monthly view' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your message' }), { target: { value: 'A weekly overview would help me plan.' } })
+
+    const form = screen.getByRole('dialog').querySelector('form')
+    expect(form).toHaveAttribute('action', 'https://github.com/P-pyy/daymark/issues/new')
+    expect(form).toHaveAttribute('method', 'get')
+    expect(form).toHaveAttribute('target', '_blank')
+    expect(form).toHaveAttribute('rel', 'noreferrer')
+    expect(form?.querySelector('input[name="title"]')).toHaveValue('Add a weekly & monthly view')
+    expect(form?.querySelector('input[name="body"]')).toHaveValue('**Category:** Idea\n\nA weekly overview would help me plan.')
+    const serializedFields = new URLSearchParams()
+    new FormData(form!).forEach((value, name) => serializedFields.append(name, String(value)))
+    expect(serializedFields.toString()).toContain('title=Add+a+weekly+%26+monthly+view')
+    expect(serializedFields.get('body')).toBe('**Category:** Idea\n\nA weekly overview would help me plan.')
+
+    fireEvent.submit(form!)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Your GitHub draft is open in a new tab.')
+  })
+
+  it('rejects whitespace-only feedback instead of opening an empty issue draft', () => {
+    renderProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: '   ' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your message' }), { target: { value: '  ' } })
+
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Please enter a title and describe your feedback.')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('opens the edit screen and saves a device-local display name', async () => {

@@ -1,4 +1,4 @@
-import { getLocalDateKey } from './taskUtils'
+import { getLocalDateKey } from '../tasks/taskUtils'
 
 export interface CalendarDay {
   date: Date

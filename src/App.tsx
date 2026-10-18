@@ -19,25 +19,25 @@ import {
 } from '@phosphor-icons/react'
 import { Bell as ProfileBell, CalendarDays as ProfileCalendar, User as ProfileUser } from 'lucide-react'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
-import { AccountDialog, type AccountSyncState } from './AccountDialog'
-import { TaskComposerDialog } from './TaskComposerDialog'
-import { TaskDetailsDialog } from './TaskDetailsDialog'
-import { TaskItem } from './TaskItem'
-import { ProfileScreen, type ThemePreference } from './ProfileScreen'
-import { CalendarScreen } from './CalendarScreen'
-import { NotificationsScreen } from './NotificationsScreen'
-import { NotificationSettingsScreen } from './NotificationSettingsScreen'
-import { LocaleProvider, useLocale } from './locale'
-import { readTasksWithStatus, writeTasks } from './taskStorage'
-import { addTaskTombstones, clearLocalAccountTasks, mergeTaskLists, readTaskTombstones, removeTaskTombstone, synchronizeTaskSet, taskFromRecord, writeTaskTombstones } from './taskSync'
-import { supabase } from './supabaseClient'
-import { categories, type Category, type Priority, type Task } from './taskTypes'
-import { getLocalDateKey, isTaskDueToday, sortTasks, type TaskSortOrder } from './taskUtils'
-import { shiftCalendarMonth } from './calendarUtils'
-import { createDueNotifications, readDueNotifications, writeDueNotifications, type DueNotification } from './dueNotifications'
-import { readBrowserAlertsPreference, writeBrowserAlertsPreference } from './notificationPreferences'
+import { AccountDialog, type AccountSyncState } from './features/profile/AccountDialog'
+import { TaskComposerDialog } from './features/tasks/TaskComposerDialog'
+import { TaskDetailsDialog } from './features/tasks/TaskDetailsDialog'
+import { TaskItem } from './features/tasks/TaskItem'
+import { ProfileScreen, type ThemePreference } from './features/profile/ProfileScreen'
+import { CalendarScreen } from './features/calendar/CalendarScreen'
+import { NotificationsScreen } from './features/notifications/NotificationsScreen'
+import { NotificationSettingsScreen } from './features/notifications/NotificationSettingsScreen'
+import { LocaleProvider, useLocale } from './shared/locale'
+import { readTasksWithStatus, writeTasks } from './features/tasks/taskStorage'
+import { addTaskTombstones, clearLocalAccountTasks, mergeTaskLists, readTaskTombstones, removeTaskTombstone, synchronizeTaskSet, taskFromRecord, writeTaskTombstones } from './features/tasks/taskSync'
+import { supabase } from './shared/supabaseClient'
+import { categories, type Category, type Priority, type Task } from './features/tasks/taskTypes'
+import { getLocalDateKey, isTaskDueToday, sortTasks, type TaskSortOrder } from './features/tasks/taskUtils'
+import { shiftCalendarMonth } from './features/calendar/calendarUtils'
+import { createDueNotifications, readDueNotifications, writeDueNotifications, type DueNotification } from './features/notifications/dueNotifications'
+import { readBrowserAlertsPreference, writeBrowserAlertsPreference } from './features/notifications/notificationPreferences'
 import heroIllustration from './assets/daymark-welcome-illustration.png'
-import './TodoReference.css'
+import './App.css'
 
 type TaskFilter = 'All' | 'Active' | 'Completed'
 type CategoryFilter = Category | 'All' | 'Today'
@@ -212,6 +212,7 @@ function AppContent() {
   const syncNowRef = useRef<() => void>(() => undefined)
   const detailsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const taskSearchRef = useRef<HTMLInputElement>(null)
+  const categoryDeviceRef = useRef<HTMLElement>(null)
   const composerWasOpen = useRef(false)
   const detailsWasOpen = useRef(false)
   const [guidedTour, setGuidedTour] = useState(false)
@@ -690,6 +691,12 @@ function AppContent() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#262720' : '#fff4f8')
   }, [theme, themePreference])
 
+  useLayoutEffect(() => {
+    if (screen === 'categories' && categoryDeviceRef.current) {
+      categoryDeviceRef.current.scrollTop = 0
+    }
+  }, [screen])
+
   useEffect(() => {
     if (!showSplash) return
 
@@ -1003,7 +1010,7 @@ function AppContent() {
             </button>
           </aside>
         )}
-        <section className="device category-device" aria-label={t('Task categories')} inert={modalOpen || screen !== 'categories'}>
+        <section ref={categoryDeviceRef} className="device category-device" aria-label={t('Task categories')} inert={modalOpen || screen !== 'categories'}>
           <div className="device-screen category-screen">
             <header className="category-screen-header today-dashboard-header">
               <div className="screen-topline today-dashboard-topline">

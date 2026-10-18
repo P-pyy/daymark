@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createDueNotifications, dueNotificationsStorageKey, readDueNotifications, writeDueNotifications, type DueNotification } from './dueNotifications'
-import type { Task } from './taskTypes'
+import type { Task } from '../tasks/taskTypes'
 
 const dueTodayTask: Task = {
   id: 'task-1',

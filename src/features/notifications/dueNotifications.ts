@@ -1,4 +1,4 @@
-import type { Task } from './taskTypes'
+import type { Task } from '../tasks/taskTypes'
 
 export const dueNotificationsStorageKey = 'daymark.due-notifications.v1'
 
