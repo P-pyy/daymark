@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { categories, type Category, type Task } from './features/tasks/taskTypes'
 
@@ -8,6 +8,7 @@ vi.mock('./shared/supabaseClient', () => ({ supabase: null }))
 const tasksStorageKey = 'daymark.tasks.v1'
 const categoryStorageKey = 'daymark.category.filter.v1'
 const splashStorageKey = 'daymark.splash.seen.v1'
+const guidedTourStorageKey = 'daymark.guided-tour.seen.v1'
 const themeStorageKey = 'daymark.theme.preference.v1'
 
 function dateKey(offset = 0) {
@@ -97,13 +98,50 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+beforeEach(() => {
+  localStorage.setItem(guidedTourStorageKey, 'seen')
+})
+
 describe('Daymark task UI', () => {
-  it('opens the Today dashboard on a first launch with no stored tasks', () => {
+  it('shows the first-launch tour over the Today dashboard and persists a skip', () => {
+    localStorage.removeItem(guidedTourStorageKey)
     startApp()
 
     expect(screen.getByRole('main', { name: 'Choose a task category' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Task categories' })).toBeInTheDocument()
     expect(screen.queryByRole('main', { name: 'Welcome to Daymark' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'A clear view of today' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('dialog', { name: 'Add tasks as they come to mind' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(screen.getByRole('dialog', { name: 'A clear view of today' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Skip tour' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(localStorage.getItem(guidedTourStorageKey)).toBe('seen')
+  })
+
+  it('finishes the guided tour and does not show it again on a returning launch', () => {
+    localStorage.removeItem(guidedTourStorageKey)
+    const app = startApp()
+
+    for (const title of [
+      'Add tasks as they come to mind',
+      'Keep plans in categories',
+      'Find the rest of Daymark',
+    ]) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+      expect(screen.getByRole('dialog', { name: title })).toBeInTheDocument()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Finish tour' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(localStorage.getItem(guidedTourStorageKey)).toBe('seen')
+
+    app.unmount()
+    startApp()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('opens the Today dashboard for returning users even when Today was the last task-list scope', () => {
@@ -216,6 +254,25 @@ describe('Daymark task UI', () => {
     expect(screen.getByRole('heading', { name: 'Notifications' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: new RegExp(`Open task “${task.title}”`) })).toBeInTheDocument()
     expect(navigation.getByRole('button', { name: 'Notifications' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('shows an account summary at the bottom of desktop navigation and opens Profile', () => {
+    renderTasks()
+
+    const desktopNavigation = within(screen.getByRole('navigation', { name: 'Daymark' }))
+    expect(desktopNavigation.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+      'Today',
+      'Calendar',
+      'Notifications',
+    ])
+    expect(within(screen.getByRole('complementary', { name: 'Daymark navigation' }))
+      .queryByRole('button', { name: 'Switch to Dark theme' })).not.toBeInTheDocument()
+
+    const profileSummary = screen.getByRole('button', { name: 'Profile, Private on this device' })
+    fireEvent.click(profileSummary)
+
+    expect(screen.getByRole('main', { name: 'Your Daymark profile' })).toBeInTheDocument()
+    expect(profileSummary).toHaveAttribute('aria-current', 'page')
   })
 
   it('applies the selected language across navigation, calendar, and task forms', () => {
@@ -796,6 +853,18 @@ describe('Daymark task UI', () => {
     expect(document.querySelector('.notifications-empty-state img')).toHaveAttribute('src', '/daymark-empty-notifications.svg')
     fireEvent.click(screen.getByRole('tab', { name: 'Unread' }))
     expect(screen.getByRole('heading', { name: 'No unread notifications' })).toBeInTheDocument()
+  })
+
+  it('marks all reminders as read from the notification center', () => {
+    const task = makeTask('Mark every reminder read', { dueDate: dateKey() })
+    renderTasks([task])
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('button', { name: 'Notifications' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all read' }))
+
+    expect(JSON.parse(localStorage.getItem('daymark.due-notifications.v1') || '[]')[0].read).toBe(true)
+    fireEvent.click(screen.getByRole('tab', { name: 'Unread' }))
+    expect(screen.getByText('No unread notifications')).toBeInTheDocument()
   })
 
   it('keeps status filters based on parent task fields', () => {

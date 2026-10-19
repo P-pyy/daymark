@@ -27,6 +27,7 @@ import { ProfileScreen, type ThemePreference } from './features/profile/ProfileS
 import { CalendarScreen } from './features/calendar/CalendarScreen'
 import { NotificationsScreen } from './features/notifications/NotificationsScreen'
 import { NotificationSettingsScreen } from './features/notifications/NotificationSettingsScreen'
+import { GuidedTour } from './features/onboarding/GuidedTour'
 import { LocaleProvider, useLocale } from './shared/locale'
 import { readTasksWithStatus, writeTasks } from './features/tasks/taskStorage'
 import { addTaskTombstones, clearLocalAccountTasks, mergeTaskLists, readTaskTombstones, removeTaskTombstone, synchronizeTaskSet, taskFromRecord, writeTaskTombstones } from './features/tasks/taskSync'
@@ -47,6 +48,7 @@ type TaskStorageIssue = 'load' | 'save'
 type AppNavigation = 'today' | 'calendar' | 'search' | 'notifications' | 'profile'
 
 const splashStorageKey = 'daymark.splash.seen.v1'
+const guidedTourStorageKey = 'daymark.guided-tour.seen.v1'
 const themeStorageKey = 'daymark.theme.preference.v1'
 const categoryStorageKey = 'daymark.category.filter.v1'
 
@@ -55,6 +57,33 @@ function shouldShowSplash() {
     return sessionStorage.getItem(splashStorageKey) !== 'seen'
   } catch {
     return true
+  }
+}
+
+function hasCompletedGuidedTour() {
+  try {
+    if (localStorage.getItem(guidedTourStorageKey) === 'seen') return true
+  } catch {
+    // Session storage remains available as a per-tab fallback.
+  }
+  try {
+    return sessionStorage.getItem(guidedTourStorageKey) === 'seen'
+  } catch {
+    return false
+  }
+}
+
+function rememberGuidedTour() {
+  try {
+    localStorage.setItem(guidedTourStorageKey, 'seen')
+    return
+  } catch {
+    // Fall back to this tab when persistent storage is unavailable.
+  }
+  try {
+    sessionStorage.setItem(guidedTourStorageKey, 'seen')
+  } catch {
+    return
   }
 }
 
@@ -165,6 +194,7 @@ function AppContent() {
   })
   const [showSplash, setShowSplash] = useState(shouldShowSplash)
   const [splashLeaving, setSplashLeaving] = useState(false)
+  const [guidedTourOpen, setGuidedTourOpen] = useState(() => !shouldShowSplash() && !hasCompletedGuidedTour())
   const [screen, setScreen] = useState<AppScreen>('categories')
   const [pageLoading, setPageLoading] = useState(false)
   const [pageLoadingLeaving, setPageLoadingLeaving] = useState(false)
@@ -226,6 +256,11 @@ function AppContent() {
 
   function toggleTheme() {
     setThemePreference(theme === 'dark' ? 'light' : 'dark')
+  }
+
+  function finishGuidedTour() {
+    rememberGuidedTour()
+    setGuidedTourOpen(false)
   }
 
   const saveDueNotificationChanges = useCallback((nextNotifications: DueNotification[]) => {
@@ -704,7 +739,10 @@ function AppContent() {
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const leaveTimer = window.setTimeout(() => setSplashLeaving(true), reducedMotion ? 500 : 1120)
-    const hideTimer = window.setTimeout(() => setShowSplash(false), reducedMotion ? 520 : 1410)
+    const hideTimer = window.setTimeout(() => {
+      setShowSplash(false)
+      if (!hasCompletedGuidedTour()) setGuidedTourOpen(true)
+    }, reducedMotion ? 520 : 1410)
 
     return () => {
       window.clearTimeout(leaveTimer)
@@ -850,6 +888,11 @@ function AppContent() {
     openTaskDetails(task, trigger)
   }
 
+  function markAllNotificationsRead() {
+    if (!dueNotifications.some((notification) => !notification.read)) return
+    saveDueNotificationChanges(dueNotifications.map((notification) => ({ ...notification, read: true })))
+  }
+
   function updateTask(updatedTask: Task) {
     saveTasks(tasks.map((task) => task.id === updatedTask.id
       ? { ...updatedTask, updatedAt: Math.max(getCurrentTimestamp(), (task.updatedAt ?? task.createdAt) + 1) }
@@ -983,10 +1026,63 @@ function AppContent() {
                 message: t('Choose another category or add a new task.'),
               }
   const canResetEmptyState = Boolean(query || categoryFilter !== 'All' || filter !== 'All')
+  const desktopProfileName = typeof accountUser?.user_metadata.daymark_display_name === 'string'
+    ? accountUser.user_metadata.daymark_display_name
+    : typeof accountUser?.user_metadata.full_name === 'string'
+      ? accountUser.user_metadata.full_name
+      : typeof accountUser?.user_metadata.name === 'string' ? accountUser.user_metadata.name : null
+  const desktopProfileImage = typeof accountUser?.user_metadata.avatar_url === 'string'
+    ? accountUser.user_metadata.avatar_url
+    : typeof accountUser?.user_metadata.picture === 'string' ? accountUser.user_metadata.picture : null
 
   return (
-    <div className={`app-shell reference-shell${screen === 'profile' ? ' profile-open' : ''}${screen === 'notification-settings' ? ' notification-settings-open' : ''}${screen === 'categories' ? ' today-dashboard-open' : ''}`}>
-      <a className="skip-link" href="#main-content" aria-hidden={showSplash || modalOpen} tabIndex={showSplash || modalOpen ? -1 : 0}>{t('Skip to tasks')}</a>
+    <>
+    <div className={`app-shell reference-shell${screen !== 'welcome' ? ' has-desktop-navigation' : ''}${screen === 'profile' ? ' profile-open' : ''}${screen === 'notification-settings' ? ' notification-settings-open' : ''}${screen === 'categories' ? ' today-dashboard-open' : ''}`} inert={guidedTourOpen}>
+      <a className="skip-link" href="#main-content" aria-hidden={showSplash || modalOpen || guidedTourOpen} tabIndex={showSplash || modalOpen || guidedTourOpen ? -1 : 0}>{t('Skip to tasks')}</a>
+      {screen !== 'welcome' && (
+        <aside className="desktop-sidebar" aria-label={t('Daymark navigation')} inert={modalOpen}>
+          <a className="desktop-brand" href="#main-content" aria-label="Daymark">
+            <img src="/daymark-logo.svg" alt="Daymark" />
+          </a>
+          <button
+            className="desktop-new-task"
+            type="button"
+            onClick={(event) => { composerTriggerRef.current = event.currentTarget; setComposerOpen(true) }}
+          >
+            <Plus size={19} weight="bold" aria-hidden="true" />
+            <span>{t('Add a task')}</span>
+          </button>
+          <nav className="desktop-primary-navigation" aria-label="Daymark">
+            <button type="button" className={activeNavigation === 'today' ? 'is-current' : ''} aria-current={activeNavigation === 'today' ? 'page' : undefined} onClick={openTodayDashboard}>
+              <Sun size={21} aria-hidden="true" /><span>{t('Today')}</span>
+            </button>
+            <button type="button" className={activeNavigation === 'calendar' ? 'is-current' : ''} aria-current={activeNavigation === 'calendar' ? 'page' : undefined} onClick={openCalendar}>
+              <ProfileCalendar size={20} aria-hidden="true" /><span>{t('Calendar')}</span>
+            </button>
+            <button type="button" className={activeNavigation === 'notifications' ? 'is-current' : ''} aria-current={activeNavigation === 'notifications' ? 'page' : undefined} onClick={openNotifications}>
+              <ProfileBell size={20} aria-hidden="true" /><span>{t('Notifications')}</span>
+              {unreadNotificationCount > 0 && <span className="desktop-navigation-count">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</span>}
+            </button>
+          </nav>
+          <button
+            className="desktop-profile-button"
+            type="button"
+            aria-label={desktopProfileName
+              ? `${desktopProfileName}, ${t(accountUser ? 'Google account' : 'Private on this device')}`
+              : `${t('Profile')}, ${t(accountUser ? 'Google account' : 'Private on this device')}`}
+            aria-current={activeNavigation === 'profile' ? 'page' : undefined}
+            onClick={openProfile}
+          >
+            {desktopProfileImage
+              ? <img className="desktop-profile-avatar" src={desktopProfileImage} alt="" referrerPolicy="no-referrer" />
+              : <span className="desktop-profile-avatar desktop-profile-avatar-fallback" aria-hidden="true"><User size={20} weight="duotone" /></span>}
+            <span className="desktop-profile-copy">
+              <span className="desktop-profile-name">{desktopProfileName || t('Profile')}</span>
+              <span className="desktop-profile-account">{t(accountUser ? 'Google account' : 'Private on this device')}</span>
+            </span>
+          </button>
+        </aside>
+      )}
       <main
         className={`app-stage flow-${screen}${screen === 'calendar' ? ' calendar-concept-stage' : ''}`}
         id="main-content"
@@ -1342,6 +1438,7 @@ function AppContent() {
             notifications={dueNotifications}
             storageError={notificationStorageError ?? browserNotificationError}
             onOpenSettings={openNotificationSettings}
+            onMarkAllRead={markAllNotificationsRead}
             onOpenTask={openNotificationTask}
           />
         )}
@@ -1364,14 +1461,8 @@ function AppContent() {
             onManageAccount={openAccount}
             isSignedIn={Boolean(accountUser)}
             accountEmail={accountUser?.email ?? null}
-            profileName={typeof accountUser?.user_metadata.daymark_display_name === 'string'
-              ? accountUser.user_metadata.daymark_display_name
-              : typeof accountUser?.user_metadata.full_name === 'string'
-                ? accountUser.user_metadata.full_name
-                : typeof accountUser?.user_metadata.name === 'string' ? accountUser.user_metadata.name : null}
-            profileImage={typeof accountUser?.user_metadata.avatar_url === 'string'
-              ? accountUser.user_metadata.avatar_url
-              : typeof accountUser?.user_metadata.picture === 'string' ? accountUser.user_metadata.picture : null}
+            profileName={desktopProfileName}
+            profileImage={desktopProfileImage}
             profileScope={accountUser?.id ?? 'local'}
             onUpdateProfileName={updateAccountProfileName}
             syncState={syncState}
@@ -1387,7 +1478,7 @@ function AppContent() {
           <nav
             className={`bottom-tab-bar${screen === 'notification-settings' ? ' notifications-reference-nav' : ''}`}
             aria-label={t('Primary')}
-            inert={modalOpen}
+            inert={modalOpen || guidedTourOpen}
           >
             <button type="button" className={activeNavigation === 'today' ? 'is-current' : ''} aria-current={activeNavigation === 'today' ? 'page' : undefined} onClick={openTodayDashboard}><Sun size={21} aria-hidden="true" /><span>{t('Today')}</span></button>
             <button type="button" className={activeNavigation === 'calendar' ? 'is-current' : ''} aria-current={activeNavigation === 'calendar' ? 'page' : undefined} onClick={openCalendar}><ProfileCalendar size={20} aria-hidden="true" /><span>{t('Calendar')}</span></button>
@@ -1438,12 +1529,14 @@ function AppContent() {
         <div className={`launch-splash ${splashLeaving ? 'is-leaving' : ''}`} role="status" aria-live="polite" aria-label={t('Opening Daymark')}>
           <div className="launch-lockup">
             <span className="launch-mark" aria-hidden="true"><ListChecks size={42} weight="bold" /></span>
-            <span className="launch-name">daymark</span>
+            <span className="launch-name">Daymark</span>
             <span className="launch-caption">{t('A little more room for your day.')}</span>
           </div>
         </div>
       )}
     </div>
+    {guidedTourOpen && <GuidedTour onFinish={finishGuidedTour} />}
+    </>
   )
 }
 

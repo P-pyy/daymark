@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, CheckCircle, GearSix } from '@phosphor-icons/react'
+import { Bell, Check, Clock, GearSix } from '@phosphor-icons/react'
 import type { DueNotification } from './dueNotifications'
 import { useLocale } from '../../shared/locale'
 
@@ -7,6 +7,7 @@ interface NotificationsScreenProps {
   notifications: DueNotification[]
   storageError: string | null
   onOpenSettings: () => void
+  onMarkAllRead: () => void
   onOpenTask: (notification: DueNotification, trigger: HTMLButtonElement) => void
 }
 
@@ -20,6 +21,7 @@ export function NotificationsScreen({
   notifications,
   storageError,
   onOpenSettings,
+  onMarkAllRead,
   onOpenTask,
 }: NotificationsScreenProps) {
   const { language, translate: t } = useLocale()
@@ -61,14 +63,25 @@ export function NotificationsScreen({
           </button>
         </div>
 
-        <button
-          className="notification-settings-button"
-          type="button"
-          aria-label={t('Notification settings')}
-          onClick={onOpenSettings}
-        >
-          <GearSix size={17} aria-hidden="true" />
-        </button>
+        <div className="notification-toolbar-actions">
+          <button
+            className="mark-read-button notification-mark-all-button"
+            type="button"
+            disabled={!notifications.some((notification) => !notification.read) || Boolean(storageError)}
+            onClick={onMarkAllRead}
+          >
+            <Check size={15} weight="bold" aria-hidden="true" />
+            <span>{t('Mark all read')}</span>
+          </button>
+          <button
+            className="notification-settings-button"
+            type="button"
+            aria-label={t('Notification settings')}
+            onClick={onOpenSettings}
+          >
+            <GearSix size={17} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {storageError && <p className="notification-storage-error" role="alert">{storageError}</p>}
@@ -85,12 +98,12 @@ export function NotificationsScreen({
                     aria-label={`${t('Open task')} “${notification.taskTitle}” ${t('due')} ${formatReminderDate(notification.dueDate, intlLocale)}`}
                     onClick={(event) => onOpenTask(notification, event.currentTarget)}
                   >
-                    <span className="notification-icon" aria-hidden="true"><CheckCircle size={21} weight="duotone" /></span>
+                    <span className="notification-icon" aria-hidden="true"><Clock size={21} weight="duotone" /></span>
                     <span className="notification-copy">
                       <strong>{t('Due today')}</strong>
                       <span>{notification.taskTitle}</span>
-                      <time dateTime={notification.dueDate}>{formatReminderDate(notification.dueDate, intlLocale)}</time>
                     </span>
+                    <time dateTime={notification.dueDate}>{formatReminderDate(notification.dueDate, intlLocale)}</time>
                     {!notification.read && <span className="notification-unread-dot" aria-label="Unread" />}
                   </button>
                 </li>
