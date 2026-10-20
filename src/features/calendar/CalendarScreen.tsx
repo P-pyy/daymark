@@ -169,6 +169,7 @@ export function CalendarScreen({
                     key={task.id}
                     task={task}
                     calendarStyle
+                    showFavoriteAction={false}
                     onToggle={onToggleTask}
                     onToggleFavorite={onToggleFavorite}
                     onUpdate={onUpdateTask}

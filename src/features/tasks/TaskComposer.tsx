@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { BookOpen, Briefcase, HouseLine, Plus, User } from '@phosphor-icons/react'
 import { categories, type Category, type Priority } from './taskTypes'
 import { useLocale } from '../../shared/locale'
+import { DatePicker } from './DatePicker'
 
 const categoryIcons = {
   Work: Briefcase,
@@ -47,12 +48,11 @@ export function TaskComposer({ onAdd, onClose, initialCategory = 'Work', initial
           className="composer-title-input"
           type="text"
           name="task-title"
-          autoFocus
           autoComplete="off"
           maxLength={160}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder={t('e.g., Review project proposal with team')}
+          placeholder={t('e.g., Take a short walk')}
           required
         />
       </div>
@@ -80,10 +80,10 @@ export function TaskComposer({ onAdd, onClose, initialCategory = 'Work', initial
             ))}
           </div>
         </fieldset>
-        <label className="composer-option date-option">
+        <div className="composer-option date-option">
           <span>{t('Due date')}</span>
-          <input type="date" name="task-due-date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
-        </label>
+          <DatePicker value={dueDate} onChange={setDueDate} />
+        </div>
       </div>
       <div className="composer-footer">
         {onClose && <button className="composer-cancel" type="button" onClick={onClose}>{t('Cancel')}</button>}

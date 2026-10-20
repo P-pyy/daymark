@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { Check, Plus, Trash, X } from '@phosphor-icons/react'
 import { categories, MAX_SUBTASK_TITLE_LENGTH, MAX_TASK_NOTES_LENGTH, type Category, type Priority, type Subtask, type Task } from './taskTypes'
 import { useLocale } from '../../shared/locale'
+import { DatePicker } from './DatePicker'
 
 interface TaskDetailsDialogProps {
   task: Task
@@ -124,10 +125,10 @@ export function TaskDetailsDialog({ task, onSave, onClose }: TaskDetailsDialogPr
                 <option value="High">{t('High')}</option>
               </select>
             </label>
-            <label className="details-field details-date-field">
+            <div className="details-field details-date-field">
               <span>{t('Due date')}</span>
-              <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
-            </label>
+              <DatePicker value={dueDate} onChange={setDueDate} />
+            </div>
           </div>
 
           <label className="details-field notes-field">

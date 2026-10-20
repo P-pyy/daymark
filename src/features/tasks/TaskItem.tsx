@@ -3,10 +3,12 @@ import { BookOpenText, Briefcase, Check, Heart, House, Info, ListChecks, PencilS
 import { categories, type Category, type Priority, type Task } from './taskTypes'
 import { getDaysUntilDue, getTaskDueStatus } from './taskUtils'
 import { useLocale } from '../../shared/locale'
+import { DatePicker } from './DatePicker'
 
 interface TaskItemProps {
   task: Task
   calendarStyle?: boolean
+  showFavoriteAction?: boolean
   onToggle: (task: Task) => void
   onToggleFavorite: (task: Task) => void
   onUpdate: (task: Task) => void
@@ -32,7 +34,7 @@ function formatDueDate(value: string, daysUntil: number | null, locale: string, 
   return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(date)
 }
 
-export function TaskItem({ task, calendarStyle = false, onToggle, onToggleFavorite, onUpdate, onDelete, onOpenDetails }: TaskItemProps) {
+export function TaskItem({ task, calendarStyle = false, showFavoriteAction = true, onToggle, onToggleFavorite, onUpdate, onDelete, onOpenDetails }: TaskItemProps) {
   const { language, translate: t } = useLocale()
   const intlLocale = language === 'fil' ? 'fil-PH' : 'en'
   const [isEditing, setIsEditing] = useState(false)
@@ -95,7 +97,7 @@ export function TaskItem({ task, calendarStyle = false, onToggle, onToggleFavori
           <div className="edit-options">
             <label><span className="sr-only">{t('Category')}</span><select value={category} onChange={(event) => setCategory(event.target.value as Category)}>{categories.map((option) => <option key={option} value={option}>{t(option)}</option>)}</select></label>
             <label><span className="sr-only">{t('Priority')}</span><select value={priority} onChange={(event) => setPriority(event.target.value as Priority)}><option value="Low">{t('Low')}</option><option value="Normal">{t('Normal')}</option><option value="High">{t('High')}</option></select></label>
-            <label><span className="sr-only">{t('Due date')}</span><input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label>
+            <DatePicker value={dueDate} onChange={setDueDate} />
             <div className="edit-actions">
               <button className="icon-button edit-save" type="submit" aria-label={t('Save task changes')} title={t('Save changes')}><Check size={17} weight="bold" aria-hidden="true" /></button>
               <button className="icon-button" type="button" aria-label={t('Cancel editing')} title={t('Cancel')} onClick={cancelEdit}><X size={17} aria-hidden="true" /></button>
@@ -136,16 +138,18 @@ export function TaskItem({ task, calendarStyle = false, onToggle, onToggleFavori
         </div>
       </div>
       <div className="task-actions">
-        <button
-          className={`icon-button favorite-button ${task.favorite ? 'is-favorite' : ''}`}
-          type="button"
-          aria-label={`${t(task.favorite ? 'Remove' : 'Add')} “${task.title}” ${t(task.favorite ? 'from' : 'to')} ${t('favorites')}`}
-          aria-pressed={Boolean(task.favorite)}
-          title={t(task.favorite ? 'Remove from favorites' : 'Add to favorites')}
-          onClick={() => onToggleFavorite(task)}
-        >
-          <Heart size={17} weight={task.favorite ? 'fill' : 'regular'} aria-hidden="true" />
-        </button>
+        {showFavoriteAction && (
+          <button
+            className={`icon-button favorite-button ${task.favorite ? 'is-favorite' : ''}`}
+            type="button"
+            aria-label={`${t(task.favorite ? 'Remove' : 'Add')} “${task.title}” ${t(task.favorite ? 'from' : 'to')} ${t('favorites')}`}
+            aria-pressed={Boolean(task.favorite)}
+            title={t(task.favorite ? 'Remove from favorites' : 'Add to favorites')}
+            onClick={() => onToggleFavorite(task)}
+          >
+            <Heart size={17} weight={task.favorite ? 'fill' : 'regular'} aria-hidden="true" />
+          </button>
+        )}
         <button className="icon-button" type="button" aria-label={`${t('Edit')} “${task.title}”`} title={t('Edit task')} onClick={() => setIsEditing(true)}><PencilSimple size={17} aria-hidden="true" /></button>
         <button className="icon-button delete-button" type="button" aria-label={`${t('Delete')} “${task.title}”`} title={t('Delete task')} onClick={() => onDelete(task)}><Trash size={17} aria-hidden="true" /></button>
       </div>
